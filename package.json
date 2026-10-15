@@ -1,0 +1,33 @@
+{
+  "name": "lvglplus-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "pnpm --filter @lvglplus/compiler build && pnpm --filter @lvglplus/cli build && pnpm --filter @lvglplus/studio build",
+    "test": "pnpm build && node --test tests/*.test.mjs",
+    "test:c": "cmake -S . -B build/core -DLVP_WITH_LVGL=OFF && cmake --build build/core && ctest --test-dir build/core --output-on-failure",
+    "bootstrap": "python3 scripts/bootstrap.py",
+    "build:wasm": "python3 scripts/build_preview.py",
+    "dev": "node packages/cli/dist/main.js dev examples/vehicle",
+    "validate": "node packages/cli/dist/main.js validate examples/vehicle",
+    "generate": "node packages/cli/dist/main.js generate examples/vehicle",
+    "check": "pnpm test && pnpm test:c",
+    "test:render": "node tests/render-parity.mjs",
+    "test:dbc": ".venv/bin/python tests/test_dbc.py",
+    "test:linux": "node scripts/test_linux.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
+    "release:pack": "node scripts/package.mjs",
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\" \"tests/*.mjs\" \"scripts/*.mjs\""
+  },
+  "devDependencies": {
+    "@types/node": "24.10.0",
+    "prettier": "3.6.2",
+    "typescript": "5.9.3"
+  }
+}

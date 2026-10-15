@@ -1,0 +1,32 @@
+{
+  "cases": [
+    {
+      "name": "parked",
+      "atMs": 0,
+      "values": {
+        "vehicle.speed": 0,
+        "battery.soc": 82
+      },
+      "expect": {
+        "vm.speedMph": 0,
+        "vm.overspeed": false,
+        "vm.remainingKm": 147.6
+      },
+      "reference": "baselines/parked.png"
+    },
+    {
+      "name": "overspeed",
+      "atMs": 100,
+      "values": {
+        "vehicle.speed": 120,
+        "battery.soc": 50
+      },
+      "expect": {
+        "vm.speedMph": 74.56452,
+        "vm.overspeed": true,
+        "vm.remainingKm": 90
+      },
+      "reference": "baselines/overspeed.png"
+    }
+  ]
+}

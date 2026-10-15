@@ -1,0 +1,31 @@
+VERSION "LVGL Plus original demonstration database v1"
+
+NS_ :
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+BS_:
+BU_: Cluster Vehicle
+
+BO_ 256 DriveStatus: 8 Vehicle
+ SG_ Speed : 0|16@1+ (0.1,0) [0|240] "km/h" Cluster
+ SG_ StateOfCharge : 16|8@1+ (1,0) [0|100] "%" Cluster
+ SG_ MotorTemperature : 24|8@1- (1,0) [-128|127] "C" Cluster
+ SG_ Left : 32|1@1+ (1,0) [0|1] "" Cluster
+ SG_ Right : 33|1@1+ (1,0) [0|1] "" Cluster
+ SG_ HighBeam : 34|1@1+ (1,0) [0|1] "" Cluster
+ SG_ Warning : 35|1@1+ (1,0) [0|1] "" Cluster
+ SG_ Trip : 40|24@1+ (0.1,0) [0|1677721.5] "km" Cluster
+
+BO_ 257 MotorData: 8 Vehicle
+ SG_ Mode M : 0|8@1+ (1,0) [0|1] "" Cluster
+ SG_ Rpm m0 : 8|16@1+ (1,0) [0|16000] "rpm" Cluster
+ SG_ Torque m1 : 15|16@0- (0.1,0) [-3276.8|3276.7] "Nm" Cluster
+
+BO_ 512 BatteryDiagnostics: 64 Vehicle
+ SG_ PackVoltage : 0|16@1+ (0.1,0) [0|6553.5] "V" Cluster
+ SG_ LastCellTemperature : 504|8@1- (1,0) [-128|127] "C" Cluster
+
+VAL_ 256 Warning 0 "Normal" 1 "Warning";
+CM_ "Apache-2.0: project-authored example, not a production vehicle database.";

@@ -1,0 +1,4 @@
+**
+!requirements-build.txt
+!tests/
+!tests/Dockerfile

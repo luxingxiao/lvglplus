@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<model version="1">
+  <signal name="vehicle.speed" type="number" initial="0" unit="km/h" timeoutMs="1500"/>
+  <signal name="battery.soc" type="number" initial="82" unit="%" timeoutMs="1500"/>
+  <signal name="motor.temperature" type="number" initial="34" unit="C" timeoutMs="1500"/>
+  <signal name="lights.left" type="boolean" initial="false" timeoutMs="1500"/>
+  <signal name="lights.right" type="boolean" initial="false" timeoutMs="1500"/>
+  <signal name="lights.highBeam" type="boolean" initial="false" timeoutMs="1500"/>
+  <signal name="vehicle.alarm" type="boolean" initial="false" timeoutMs="1500"/>
+  <signal name="vehicle.trip" type="number" initial="124.6" unit="km" timeoutMs="1500"/>
+  <signal name="settings.brightness" type="integer" initial="70"/>
+  <signal name="settings.sport" type="boolean" initial="false"/>
+  <computed name="vm.speedMph" type="number" expression="vehicle.speed * 0.621371"/>
+  <computed name="vm.overspeed" type="boolean" expression="vehicle.speed &gt; 100"/>
+  <computed name="vm.remainingKm" type="number" expression="battery.soc * 1.8"/>
+  <computed name="vm.hideLeft" type="boolean" expression="!lights.left"/>
+  <computed name="vm.hideRight" type="boolean" expression="!lights.right"/>
+  <computed name="vm.hideBeam" type="boolean" expression="!lights.highBeam"/>
+  <computed name="vm.hideAlarm" type="boolean" expression="!vehicle.alarm"/>
+  <computed name="vm.hideOverspeed" type="boolean" expression="!vm.overspeed"/>
+  <command name="resetTrip" target="vehicle.trip" value="0"/>
+  <command name="requestDiagnostics"/>
+</model>

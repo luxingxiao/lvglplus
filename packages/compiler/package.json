@@ -1,0 +1,22 @@
+{
+  "name": "@lvglplus/compiler",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "exports": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "saxes": "6.0.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

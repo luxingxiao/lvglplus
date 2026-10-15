@@ -1,0 +1,12 @@
+{
+  "formatVersion": 1,
+  "name": "vehicle",
+  "lvglVersion": "9.5.0",
+  "ui": "dashboard.xml",
+  "model": "model.xml",
+  "sources": "sources.json",
+  "targets": [
+    { "name": "cluster", "width": 800, "height": 480 },
+    { "name": "wide", "width": 1024, "height": 600 }
+  ]
+}

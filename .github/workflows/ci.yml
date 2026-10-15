@@ -1,0 +1,49 @@
+name: LVGL Plus checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  tooling-and-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --global pnpm@11.7.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - run: cmake -S . -B build/core -DLVP_WITH_LVGL=OFF -DCMAKE_BUILD_TYPE=Debug
+      - run: cmake --build build/core --config Debug
+      - run: ctest --test-dir build/core -C Debug --output-on-failure
+  render-and-can:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm install --global pnpm@11.7.0
+      - run: pnpm install --frozen-lockfile
+      - run: python3 scripts/bootstrap.py --wasm
+      - run: pnpm build:wasm && pnpm build
+      - run: pnpm test:render && pnpm test:dbc
+      - name: Build Linux gateway with project codec
+        run: |
+          node packages/cli/dist/main.js build examples/vehicle --gateway
+          sudo modprobe vcan
+          sudo ip link add dev vcan0 type vcan
+          sudo ip link set vcan0 up
+          .venv/bin/python tests/test_socketcan.py examples/vehicle/.lvglplus/gateway/lvp_can_gateway
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: render-results
+          path: build/parity

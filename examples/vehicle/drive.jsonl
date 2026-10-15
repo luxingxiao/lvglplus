@@ -1,0 +1,9 @@
+{"atMs":0,"values":{"vehicle.speed":0,"battery.soc":84,"motor.temperature":29,"lights.left":false,"lights.right":false,"lights.highBeam":false,"vehicle.alarm":false,"vehicle.trip":124.6}}
+{"atMs":500,"values":{"vehicle.speed":15,"battery.soc":84,"motor.temperature":31,"lights.left":true,"lights.right":false,"lights.highBeam":false,"vehicle.alarm":false,"vehicle.trip":124.7}}
+{"atMs":1000,"values":{"vehicle.speed":38,"battery.soc":83,"motor.temperature":35,"lights.left":false,"lights.right":false,"lights.highBeam":true,"vehicle.alarm":false,"vehicle.trip":124.9}}
+{"atMs":1500,"values":{"vehicle.speed":64,"battery.soc":83,"motor.temperature":42,"lights.left":false,"lights.right":false,"lights.highBeam":true,"vehicle.alarm":false,"vehicle.trip":125.2}}
+{"atMs":2000,"values":{"vehicle.speed":88,"battery.soc":82,"motor.temperature":50,"lights.left":false,"lights.right":true,"lights.highBeam":true,"vehicle.alarm":false,"vehicle.trip":125.6}}
+{"atMs":2500,"values":{"vehicle.speed":110,"battery.soc":82,"motor.temperature":58,"lights.left":false,"lights.right":false,"lights.highBeam":true,"vehicle.alarm":true,"vehicle.trip":125.9}}
+{"atMs":3000,"values":{"vehicle.speed":75,"battery.soc":81,"motor.temperature":54,"lights.left":false,"lights.right":false,"lights.highBeam":false,"vehicle.alarm":false,"vehicle.trip":126.2}}
+{"atMs":3500,"values":{"vehicle.speed":32,"battery.soc":81,"motor.temperature":46,"lights.left":false,"lights.right":false,"lights.highBeam":false,"vehicle.alarm":false,"vehicle.trip":126.4}}
+{"atMs":4000,"values":{"vehicle.speed":0,"battery.soc":81,"motor.temperature":39,"lights.left":false,"lights.right":false,"lights.highBeam":false,"vehicle.alarm":false,"vehicle.trip":126.5}}

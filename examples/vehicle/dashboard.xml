@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<dashboard version="1" start="home">
+  <styles>
+    <style name="page" bg="#0b1220" color="#edf4ff"/>
+    <style name="muted" color="#71839d" fontSize="14"/>
+    <style name="card" bg="#142035" radius="14" border="1" borderColor="#23334d" padding="18"/>
+  </styles>
+  <component name="metric">
+    <param name="caption"/>
+    <param name="signal"/>
+    <param name="format" default="%.0f"/>
+    <param name="fontSize" default="40"/>
+    <param name="x" default="430"/>
+    <param name="y" default="100"/>
+    <panel id="card" style="card" x="${x}" y="${y}" width="160" height="116">
+      <text id="caption" text="${caption}" style="muted"/>
+      <text id="reading" y="32" fontSize="${fontSize}" color="#edf4ff">
+        <bind property="text" signal="${signal}" format="${format}"/>
+      </text>
+    </panel>
+  </component>
+  <page id="home" style="page">
+    <text id="brand" x="30" y="25" text="LVGL PLUS / VEHICLE" fontSize="20"/>
+    <text id="connection" x="690" y="28" color="#5ee1a6">
+      <bind property="quality" signal="vehicle.speed"/>
+    </text>
+    <arc id="speedGauge" x="45" y="84" width="330" height="330" min="0" max="160" color="#56d9ed">
+      <bind property="value" signal="vehicle.speed"/>
+    </arc>
+    <text id="speed" x="115" y="196" width="190" text="0" fontSize="48" align="top-left" textAlign="center">
+      <bind property="text" signal="vehicle.speed" format="%.0f"/>
+    </text>
+    <text id="speedUnit" x="164" y="258" text="km/h" style="muted"/>
+    <text id="mph" x="140" y="290" color="#9aaec8" fontSize="20">
+      <bind property="text" signal="vm.speedMph" format="%.0f mph"/>
+    </text>
+    <text id="left" x="52" y="70" text="LEFT" color="#5ee1a6">
+      <bind property="hidden" signal="vm.hideLeft"/>
+    </text>
+    <text id="right" x="310" y="70" text="RIGHT" color="#5ee1a6">
+      <bind property="hidden" signal="vm.hideRight"/>
+    </text>
+    <use component="metric" id="battery" caption="BATTERY" signal="battery.soc" format="%.0f%%" x="420" y="96"/>
+    <use component="metric" id="temperature" caption="MOTOR TEMP" signal="motor.temperature" format="%.0f C" x="604" y="96"/>
+    <use component="metric" id="range" caption="RANGE" signal="vm.remainingKm" format="%.0f km" fontSize="28" x="420" y="232"/>
+    <use component="metric" id="trip" caption="TRIP" signal="vehicle.trip" format="%.1f km" fontSize="28" x="604" y="232"/>
+    <bar id="batteryBar" x="440" y="202" width="120" height="5" color="#5ee1a6">
+      <bind property="value" signal="battery.soc"/>
+    </bar>
+    <text id="beam" x="52" y="376" text="HIGH BEAM" color="#56a9ff">
+      <bind property="hidden" signal="vm.hideBeam"/>
+    </text>
+    <text id="warning" x="190" y="376" text="CHECK VEHICLE" color="#ffb454">
+      <bind property="hidden" signal="vm.hideAlarm"/>
+    </text>
+    <text id="overspeed" x="44" y="420" text="Speed advisory" color="#ffb454">
+      <bind property="hidden" signal="vm.hideOverspeed"/>
+    </text>
+    <button id="settingsButton" x="420" y="380" width="160" height="48" text="SETTINGS" bg="#223957" navigate="settings"/>
+    <button id="resetButton" x="604" y="380" width="160" height="48" text="RESET TRIP" bg="#223957">
+      <on event="click" command="resetTrip"/>
+    </button>
+    <text id="footer" x="420" y="449" text="ONE MODEL. EVERY DEVICE." style="muted"/>
+  </page>
+  <page id="settings" style="page" padding="32" direction="column" gap="24">
+    <text id="settingsTitle" text="DISPLAY SETTINGS" fontSize="28"/>
+    <text id="brightnessTitle" text="Brightness"/>
+    <slider id="brightness" width="650" min="0" max="100">
+      <bind property="value" signal="settings.brightness" direction="two-way"/>
+    </slider>
+    <text id="brightnessValue"><bind property="text" signal="settings.brightness" format="%d%%"/></text>
+    <text id="sportTitle" text="Sport display"/>
+    <switch id="sport"><bind property="checked" signal="settings.sport" direction="two-way"/></switch>
+    <button id="back" text="BACK TO CLUSTER" navigate="home" width="240" height="48"/>
+  </page>
+</dashboard>

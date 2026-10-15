@@ -1,0 +1,17 @@
+{
+  "fixture": "vehicle 800x480; 18 signals; 36 nodes",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M5 Pro",
+    "node": "v24.16.0"
+  },
+  "wasmInitializeMs": 3.71,
+  "firstCompileAndRenderMs": 8.54,
+  "xmlReloadMedianMs": 1.73,
+  "xmlReloadP95Ms": 2.81,
+  "softwareRenderFrames": 240,
+  "softwareRenderTotalMs": 73.7,
+  "wasmReservedLinearMemoryBytes": 17104896,
+  "limitations": "Node-hosted WASM; no browser canvas upload, hardware display, GPU or device FPS measurement"
+}

@@ -1,0 +1,24 @@
+{
+  "simulation": {
+    "vehicle.speed": { "min": 0, "max": 128, "periodMs": 18000 },
+    "battery.soc": { "min": 62, "max": 92, "periodMs": 60000 },
+    "motor.temperature": { "min": 28, "max": 72, "periodMs": 24000 },
+    "lights.left": { "min": 0, "max": 1, "periodMs": 2000, "kind": "toggle" },
+    "lights.right": { "min": 0, "max": 1, "periodMs": 3200, "kind": "toggle" },
+    "lights.highBeam": { "min": 0, "max": 1, "periodMs": 12000, "kind": "toggle" },
+    "vehicle.alarm": { "min": 0, "max": 1, "periodMs": 20000, "kind": "toggle" },
+    "vehicle.trip": { "min": 124.6, "max": 130.6, "periodMs": 120000 }
+  },
+  "replay": "drive.jsonl",
+  "dbc": "vehicle.dbc",
+  "mappings": {
+    "DriveStatus.Speed": "vehicle.speed",
+    "DriveStatus.StateOfCharge": "battery.soc",
+    "DriveStatus.MotorTemperature": "motor.temperature",
+    "DriveStatus.Left": "lights.left",
+    "DriveStatus.Right": "lights.right",
+    "DriveStatus.HighBeam": "lights.highBeam",
+    "DriveStatus.Warning": "vehicle.alarm",
+    "DriveStatus.Trip": "vehicle.trip"
+  }
+}

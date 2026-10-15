@@ -1,0 +1,28 @@
+{
+  "name": "@lvglplus/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "lvglplus": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lvglplus/compiler": "workspace:*",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.1"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
