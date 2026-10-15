@@ -1,0 +1,19 @@
+{
+  "name": "@lvglplus/desktop",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-packager . LVGLPlus --out=../../build/desktop --overwrite"
+  },
+  "dependencies": {
+    "@lvglplus/cli": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "44.7.2",
+    "@electron/packager": "20.3.0"
+  }
+}

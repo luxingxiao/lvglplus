@@ -1,0 +1,8 @@
+<dashboard version="1" locale="en">
+  <translations><locale name="en"><message key="title" value="Instrument"/></locale><locale name="de"><message key="title" value="Instrumente"/></locale></translations>
+  <page id="home" bg="#0b1220">
+    <text id="title" x="20" y="20" color="#ffffff" textKey="title" font="cluster"/>
+    <custom id="meter" customType="meter" x="30" y="90" width="250" height="60" custom.caption="km/h"><bind property="value" signal="speed"/></custom>
+    <text id="animated" x="20" y="180" text="Independent C widget" color="#68e5bc"><animate property="x" from="20" to="70" durationMs="1000" easing="ease-in-out"/></text>
+  </page>
+</dashboard>

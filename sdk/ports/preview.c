@@ -8,6 +8,9 @@ static lvp_context *context;
 static lvp_ui *ui;
 static int initialized;
 static char last_error[256];
+#ifdef LVP_CUSTOM
+extern void lvp_register_custom_widgets(void);
+#endif
 int lvp_preview_load(const uint8_t *bytes, uint32_t length) {
     lvp_package *next;
     lvp_context *next_context;
@@ -15,6 +18,9 @@ int lvp_preview_load(const uint8_t *bytes, uint32_t length) {
     uint32_t i;
     if (!initialized) {
         lv_init();
+#ifdef LVP_CUSTOM
+        lvp_register_custom_widgets();
+#endif
         initialized = 1;
     }
     next = lvp_package_load(bytes, length, last_error, sizeof(last_error));
@@ -132,4 +138,15 @@ void lvp_preview_close(void) {
     ui = NULL;
     context = NULL;
     package = NULL;
+}
+
+int lvp_preview_locale(const char *locale) {
+    return lvp_ui_locale(ui, locale);
+}
+void lvp_preview_restart_animations(void) {
+    lvp_ui_restart_animations(ui);
+}
+
+int lvp_preview_hit_test(int32_t x, int32_t y) {
+    return lvp_ui_hit_test(ui, x, y);
 }

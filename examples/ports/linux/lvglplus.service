@@ -1,0 +1,17 @@
+[Unit]
+Description=LVGL Plus instrument
+After=network.target
+[Service]
+Type=simple
+WorkingDirectory=/opt/lvglplus
+ExecStart=/opt/lvglplus/lvp_drm /dev/dri/card0 /dev/input/event0
+User=lvglplus
+SupplementaryGroups=video render input
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+[Install]
+WantedBy=multi-user.target

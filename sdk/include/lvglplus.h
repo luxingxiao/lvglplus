@@ -6,7 +6,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define LVP_FORMAT_VERSION 1
+#define LVP_FORMAT_VERSION 2
 #define LVP_STRING_MAX 255
 #define LVP_SIGNAL_MAX 256
 #define LVP_NODE_MAX 512
@@ -178,6 +178,8 @@ lvp_result lvp_evaluate(const lvp_instruction *code, uint32_t length, const lvp_
 /* The binary package loader is optional; generated-C device builds do not link it. */
 typedef struct lvp_package lvp_package;
 lvp_package *lvp_package_load(const uint8_t *bytes, size_t size, char *error, size_t error_size);
+/* Bundle v1: SDK ABI 1 / LVGL 9.5.0 / length + CRC; authenticity is the product transport responsibility. */
+lvp_package *lvp_bundle_load(const uint8_t *bytes, size_t size, char *error, size_t error_size);
 const lvp_schema *lvp_package_schema(const lvp_package *package);
 void lvp_package_free(lvp_package *package);
 /* Transport-neutral CAN envelope; length is a byte count (not encoded DLC). */

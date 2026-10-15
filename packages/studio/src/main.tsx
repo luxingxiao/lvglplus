@@ -12,9 +12,15 @@ import {
 } from "@lvglplus/compiler";
 import { PreviewRuntime, type SignalSnapshot } from "./runtime";
 import "./style.css";
+import { Resources } from "./resources";
+import { DesignTools, editXml } from "./design";
 (globalThis as any).MonacoEnvironment = { getWorker: () => new EditorWorker() };
 type Source = {
   mode: string;
+  adapters?: string[];
+  adapterStats?: Record<string, number>;
+  recording?: boolean;
+  recordingError?: string;
   connected: boolean;
   error: string;
   paused: boolean;
@@ -153,6 +159,51 @@ function App() {
     [bounds, setBounds] = useState<number[]>();
   const [showEditor, setShowEditor] = useState(true),
     [gatewayInterface, setGatewayInterface] = useState("vcan0");
+  const [design, setDesign] = useState(false),
+    [locale, setLocale] = useState("en");
+  const history = useRef(
+    new Map<string, { past: string[]; future: string[] }>(),
+  );
+  const drag = useRef<
+    | {
+        id: string;
+        x: number;
+        y: number;
+        props: Record<string, string>;
+        resize: boolean;
+      }
+    | undefined
+  >(undefined);
+  const changeText = (name: string, value: string) => {
+    const previous = files[name];
+    if (previous === value) return;
+    const h = history.current.get(name) ?? { past: [], future: [] };
+    h.past.push(previous);
+    if (h.past.length > 100) h.past.shift();
+    h.future = [];
+    history.current.set(name, h);
+    setFiles((current) => ({ ...current, [name]: value }));
+  };
+  const applyDesign = (value: string) => {
+    if (!session) return;
+    changeText(session.manifest.ui, value);
+    setFile(session.manifest.ui);
+    void request("/api/file", { file: session.manifest.ui, content: value })
+      .then((r) => setDiagnostics(r.diagnostics))
+      .catch((e) => setError(e.message));
+  };
+  const travel = (forward: boolean) => {
+    const h = history.current.get(file);
+    if (!h) return;
+    const list = forward ? h.future : h.past;
+    const value = list.pop();
+    if (value === undefined) return;
+    (forward ? h.past : h.future).push(files[file]);
+    setFiles((current) => ({ ...current, [file]: value }));
+    void request("/api/file", { file, content: value }).catch((e) =>
+      setError(e.message),
+    );
+  };
   const canvas = useRef<HTMLCanvasElement>(null),
     runtime = useRef<PreviewRuntime | undefined>(undefined),
     token = useRef(""),
@@ -382,17 +433,58 @@ function App() {
       rect = c.getBoundingClientRect(),
       x = ((event.clientX - rect.left) * c.width) / rect.width,
       y = ((event.clientY - rect.top) * c.height) / rect.height;
-    if (inspector && pressed && ir) {
+    if (design && !pressed && drag.current && session) {
+      const d = drag.current;
+      drag.current = undefined;
+      try {
+        const attrs = d.resize
+          ? {
+              width: String(
+                Math.max(
+                  4,
+                  Math.round((Number(d.props.width ?? 80) + x - d.x) / 4) * 4,
+                ),
+              ),
+              height: String(
+                Math.max(
+                  4,
+                  Math.round((Number(d.props.height ?? 40) + y - d.y) / 4) * 4,
+                ),
+              ),
+            }
+          : {
+              x: String(Math.round((Number(d.props.x ?? 0) + x - d.x) / 4) * 4),
+              y: String(Math.round((Number(d.props.y ?? 0) + y - d.y) / 4) * 4),
+            };
+        applyDesign(
+          editXml(files[session.manifest.ui], d.id, (n) => {
+            for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+          }),
+        );
+      } catch (e) {
+        setError((e as Error).message);
+      }
+      return;
+    }
+    if ((inspector || design) && pressed && ir) {
       const nodes = flatten(ir);
-      for (let i = nodes.length - 1; i >= 0; i--) {
-        const b = runtime.current?.bounds(i);
-        if (b && x >= b[0] && y >= b[1] && x < b[0] + b[2] && y < b[1] + b[3]) {
-          setSelected(nodes[i].id);
-          break;
+      const i = runtime.current?.hitTest(x, y) ?? -1;
+      if (i >= 0) {
+        setSelected(nodes[i].id);
+        if (design) {
+          drag.current = {
+            id: nodes[i].id,
+            x,
+            y,
+            props: nodes[i].props,
+            resize: event.shiftKey,
+          };
+          c.setPointerCapture(event.pointerId);
         }
       }
       return;
     }
+    if (design) return;
     runtime.current?.pointer(x, y, pressed);
     if (pressed) c.setPointerCapture(event.pointerId);
   };
@@ -452,6 +544,17 @@ function App() {
           WORKSPACE <span>/</span> {ir?.name ?? "vehicle"} <span>/</span>{" "}
           <strong>{file}</strong>
         </div>
+        <button
+          className={design ? "enabled" : ""}
+          onClick={() => {
+            setDesign(!design);
+            setInspector(true);
+          }}
+        >
+          Design
+        </button>
+        <button onClick={() => travel(false)}>Undo</button>
+        <button onClick={() => travel(true)}>Redo</button>
         <button onClick={() => setShowEditor(!showEditor)}>
           {showEditor ? "Hide XML" : "Show XML"}
         </button>
@@ -478,6 +581,42 @@ function App() {
           <div className="tree">
             {nodes.map((n) => (
               <button
+                draggable={design}
+                onDragStart={(e) =>
+                  e.dataTransfer.setData("application/lvglplus-node", n.id)
+                }
+                onDragOver={(e) => {
+                  if (design) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (!session || !design) return;
+                  const id = e.dataTransfer.getData(
+                    "application/lvglplus-node",
+                  );
+                  if (!id) return;
+                  try {
+                    applyDesign(
+                      editXml(files[session.manifest.ui], id, (source, doc) => {
+                        const target = Array.from(
+                          doc.querySelectorAll("[id]"),
+                        ).find((t) => t.getAttribute("id") === n.id);
+                        if (
+                          !target ||
+                          source === target ||
+                          source.contains(target) ||
+                          source.tagName === "page"
+                        )
+                          throw Error("Invalid tree move");
+                        if (["panel", "page"].includes(target.tagName))
+                          target.appendChild(source);
+                        else target.parentNode!.insertBefore(source, target);
+                      }),
+                    );
+                  } catch (error) {
+                    setError((error as Error).message);
+                  }
+                }}
                 title={n.id}
                 key={n.id}
                 className={selected === n.id ? "selected" : ""}
@@ -497,7 +636,7 @@ function App() {
           <div className="sidebar-foot">
             XML → IR → LVGL
             <br />
-            <span>Apache 2.0 · v0.1</span>
+            <span>Apache 2.0 · v0.2</span>
           </div>
         </aside>
         <section className="workspace">
@@ -530,6 +669,32 @@ function App() {
               >
                 ⊞ Inspector
               </button>
+              <select
+                aria-label="Locale"
+                value={locale}
+                onChange={(e) => {
+                  setLocale(e.target.value);
+                  runtime.current?.locale(e.target.value);
+                }}
+              >
+                {[
+                  ...new Set(
+                    nodes.flatMap((n) =>
+                      Object.keys(n.props)
+                        .filter((k) => k.startsWith("l10n."))
+                        .map((k) => k.slice(5)),
+                    ),
+                  ),
+                ]
+                  .concat(["en"])
+                  .filter((v, i, a) => a.indexOf(v) === i)
+                  .map((l) => (
+                    <option key={l}>{l}</option>
+                  ))}
+              </select>
+              <button onClick={() => runtime.current?.restartAnimations()}>
+                Replay animation
+              </button>
               <button onClick={download}>↓ PNG</button>
             </div>
           </div>
@@ -544,9 +709,7 @@ function App() {
                 </div>
                 <XmlEditor
                   value={files[file] ?? ""}
-                  onChange={(value) =>
-                    setFiles((prev) => ({ ...prev, [file]: value }))
-                  }
+                  onChange={(value) => changeText(file, value)}
                   onSave={() => void save()}
                 />
               </div>
@@ -560,6 +723,56 @@ function App() {
                 <div className="canvas-wrap">
                   <canvas
                     ref={canvas}
+                    onDragOver={(e) => {
+                      if (design) e.preventDefault();
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const kind = e.dataTransfer.getData(
+                        "application/lvglplus-widget",
+                      );
+                      if (!kind || !session) return;
+                      const c = e.currentTarget,
+                        r = c.getBoundingClientRect(),
+                        x = ((e.clientX - r.left) * c.width) / r.width,
+                        y = ((e.clientY - r.top) * c.height) / r.height;
+                      let index = runtime.current?.hitTest(x, y) ?? -1;
+                      const flat = ir ? flatten(ir) : [];
+                      while (index >= 0 && flat[index]?.kind !== "panel")
+                        index = flat[index].parent;
+                      if (index < 0) return;
+                      const parent = flat[index],
+                        bounds = runtime.current?.bounds(index);
+                      try {
+                        applyDesign(
+                          editXml(
+                            files[session.manifest.ui],
+                            parent.id,
+                            (n, doc) => {
+                              const child = doc.createElement(kind);
+                              child.setAttribute("id", "widget" + Date.now());
+                              child.setAttribute(
+                                "x",
+                                String(
+                                  Math.round((x - (bounds?.[0] ?? 0)) / 4) * 4,
+                                ),
+                              );
+                              child.setAttribute(
+                                "y",
+                                String(
+                                  Math.round((y - (bounds?.[1] ?? 0)) / 4) * 4,
+                                ),
+                              );
+                              if (["text", "button"].includes(kind))
+                                child.setAttribute("text", "New " + kind);
+                              n.appendChild(child);
+                            },
+                          ),
+                        );
+                      } catch (error) {
+                        setError((error as Error).message);
+                      }
+                    }}
                     aria-label="Real LVGL instrument preview"
                     onPointerDown={(e) => pointer(e, true)}
                     onPointerUp={(e) => pointer(e, false)}
@@ -587,6 +800,42 @@ function App() {
               </div>
             </div>
           </div>
+          {design && session && (
+            <div className="design-tools">
+              <label>
+                Authored node{" "}
+                <select
+                  aria-label="Authored XML node"
+                  value={selected}
+                  onChange={(e) => setSelected(e.target.value)}
+                >
+                  <option value="">Select…</option>
+                  {Array.from(
+                    new DOMParser()
+                      .parseFromString(
+                        files[session.manifest.ui] ?? "",
+                        "application/xml",
+                      )
+                      .querySelectorAll("[id]"),
+                  ).map((n, i) => (
+                    <option key={i} value={n.getAttribute("id")!}>
+                      {n.tagName} · {n.getAttribute("id")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
+          {design && session && ir && (
+            <DesignTools
+              source={files[session.manifest.ui] ?? ""}
+              selected={selected}
+              ir={ir}
+              apply={applyDesign}
+              undo={() => travel(false)}
+              redo={() => travel(true)}
+            />
+          )}
           {error && (
             <div className="error" role="alert">
               {error}
@@ -602,6 +851,24 @@ function App() {
               ))}
             </div>
           )}
+          {design && <Resources request={request} />}
+          {source?.recordingError && (
+            <div className="error" role="alert">
+              Recording: {source.recordingError}
+            </div>
+          )}
+          {source?.adapterStats && (
+            <p className="preview-note" role="status">
+              {Object.entries(source.adapterStats)
+                .map(([key, value]) => `${key}: ${value}`)
+                .join(" · ")}
+            </p>
+          )}
+          {source?.error && (
+            <div className="error" role="alert">
+              Source: {source.error}
+            </div>
+          )}
           <section className="data-panel">
             <div className="data-header">
               <div>
@@ -609,7 +876,24 @@ function App() {
                 <p>Switch the source. Keep the UI.</p>
               </div>
               <div className="source-buttons">
-                {["simulation", "replay", "manual", "can"].map((m) => (
+                <button
+                  onClick={() =>
+                    void request("/api/record", {
+                      action: source?.recording ? "stop" : "start",
+                    })
+                      .then((r) => setStatus(r.path ?? "Recording saved"))
+                      .catch((e) => setError(e.message))
+                  }
+                >
+                  {source?.recording ? "Stop recording" : "Record source"}
+                </button>
+                {[
+                  "simulation",
+                  "replay",
+                  "manual",
+                  "can",
+                  ...(source?.adapters ?? []),
+                ].map((m) => (
                   <button
                     key={m}
                     className={source?.mode === m ? "active" : ""}

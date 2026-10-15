@@ -64,6 +64,12 @@ int main(int argc, char **argv) {
         return 2;
     }
     lv_init();
+#ifdef LVP_CUSTOM
+    {
+        extern void lvp_register_custom_widgets(void);
+        lvp_register_custom_widgets();
+    }
+#endif
     context = lvp_create(schema, NULL);
     if (!context) {
         lvp_package_free(package);
@@ -118,6 +124,7 @@ int main(int argc, char **argv) {
         lvp_package_free(package);
         return 1;
     }
+    lvp_ui_tick(ui, 0);
     lvp_ui_tick(ui, now);
     if (output) {
         FILE *f = fopen(output, "wb");

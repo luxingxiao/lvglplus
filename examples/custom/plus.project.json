@@ -1,0 +1,1 @@
+{"formatVersion":1,"name":"custom_demo","ui":"dashboard.xml","model":"model.xml","lvglVersion":"9.5.0","targets":[{"name":"desktop","width":320,"height":240}],"native":{"sources":["widgets.c"]}}

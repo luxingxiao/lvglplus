@@ -13,6 +13,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
+import { validateAdapter } from "./protocols.js";
 import {
   compile,
   generateC,
@@ -84,13 +85,38 @@ export async function loadProject(folder: string) {
     typeof manifest.model !== "string"
   )
     throw new Error("Manifest requires ui and model paths");
+  if (manifest.native) {
+    const sources = manifest.native.sources;
+    if (
+      !Array.isArray(sources) ||
+      sources.length > 32 ||
+      sources.some(
+        (name) =>
+          typeof name !== "string" ||
+          !/[.](c|cc|cpp)$/.test(name) ||
+          name.includes(";"),
+      )
+    )
+      throw new ProjectError([
+        {
+          file: "plus.project.json",
+          line: 1,
+          column: 1,
+          severity: "error",
+          code: "NATIVE",
+          message: "native.sources must list at most 32 project C/C++ files",
+        },
+      ]);
+    for (const source of sources) await inside(root, source);
+  }
   const [ui, model] = await Promise.all([
     readFile(await inside(root, manifest.ui), "utf8"),
     readFile(await inside(root, manifest.model), "utf8"),
   ]);
   const result = compile({ manifest, ui, model });
   if (!result.ir) throw new ProjectError(result.diagnostics);
-  let assetTotal = 0;
+  let assetTotal = 0,
+    decodedTotal = 0;
   for (const node of flatten(result.ir).filter(
     (node) => node.kind === "image" && node.props.src,
   )) {
@@ -105,6 +131,13 @@ export async function loadProject(folder: string) {
         throw new Error("PNG asset exceeds the preview resource budget");
       const bytes = await readFile(filename);
       if (
+        bytes.length < 24 ||
+        (decodedTotal += bytes.readUInt32BE(16) * bytes.readUInt32BE(20) * 4) >
+          64 * 1024 * 1024 ||
+        bytes.readUInt32BE(16) < 1 ||
+        bytes.readUInt32BE(20) < 1 ||
+        bytes.readUInt32BE(16) > 4096 ||
+        bytes.readUInt32BE(20) > 4096 ||
         !bytes
           .subarray(0, 8)
           .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
@@ -156,6 +189,15 @@ export function validateValue(
   return type !== "enum" || (value >= 0 && value < (choices?.length ?? 0));
 }
 export function validateSources(ir: ProjectIR, sources: SourceConfig) {
+  if (
+    sources.adapters &&
+    (!Array.isArray(sources.adapters) ||
+      sources.adapters.length > 16 ||
+      new Set(sources.adapters.map((c) => c.name)).size !==
+        sources.adapters.length)
+  )
+    throw new Error("Adapters must have unique names (max 16)");
+  for (const config of sources.adapters ?? []) validateAdapter(config, ir);
   for (const [name, spec] of Object.entries(sources.simulation ?? {})) {
     const signal = ir.signals.find((s) => s.name === name);
     if (

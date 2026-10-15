@@ -1,0 +1,9 @@
+{
+  "adapters": [
+    {"name":"telemetry","kind":"tcp-json","host":"127.0.0.1","port":9901,"mappings":{"vehicle.speed":"vehicle.speed","battery.soc":"battery.soc"}},
+    {"name":"udp","kind":"udp-json","host":"127.0.0.1","port":9902,"mappings":{"speed":"vehicle.speed"}},
+    {"name":"serial","kind":"serial-json","device":"/dev/ttyUSB0","baud":115200,"mappings":{"speed":"vehicle.speed","temperature":"motor.temperature"}},
+    {"name":"mqtt","kind":"mqtt","host":"127.0.0.1","port":1883,"topic":"vehicle/dashboard","mappings":{"speed":"vehicle.speed","soc":"battery.soc"}},
+    {"name":"modbus","kind":"modbus-tcp","host":"127.0.0.1","port":1502,"unit":1,"address":0,"count":3,"pollMs":500,"registers":{"speed":{"offset":0,"type":"uint16","factor":0.1},"temperature":{"offset":1,"type":"int16","factor":0.1},"soc":{"offset":2,"type":"uint16"}},"mappings":{"speed":"vehicle.speed","temperature":"motor.temperature","soc":"battery.soc"}}
+  ]
+}

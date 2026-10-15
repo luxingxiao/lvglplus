@@ -726,3 +726,46 @@ footer span:last-child {
     display: none;
   }
 }
+.design-tools {
+  padding: 18px;
+  background: #111b2a;
+  border: 1px solid #28394e;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+.design-tools h3 {
+  font-size: 13px;
+  color: #78e1c4;
+  margin: 0 0 8px;
+}
+.design-tools h4 {
+  font-size: 12px;
+  color: #a8bbce;
+  margin: 12px 0 6px;
+}
+.design-tools p,
+.design-tools small {
+  color: #91a4bb;
+  font-size: 12px;
+}
+.design-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 8px 0;
+}
+.design-row input:not([type="checkbox"]) {
+  max-width: 190px;
+  background: #0a1422;
+  border: 1px solid #304157;
+  padding: 8px;
+  border-radius: 4px;
+  color: white;
+}
+.design-row label {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  gap: 5px;
+}

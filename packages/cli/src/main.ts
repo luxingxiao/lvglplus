@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { createRequire } from "node:module";
 import { flatten } from "@lvglplus/compiler";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import {
@@ -20,6 +21,18 @@ import {
   generateDBC,
 } from "./build.js";
 import { serve } from "./server.js";
+import {
+  runtimeDirectory,
+  exportViewer,
+  budget,
+  createBundle,
+  verifyBundle,
+  installBundle,
+  rollbackBundle,
+} from "./artifacts.js";
+import { importFigma } from "./figma.js";
+import { serveMCP } from "./mcp.js";
+import { migrate } from "./migrate.js";
 
 const args = process.argv.slice(2),
   command = args.shift() ?? "help";
@@ -39,7 +52,9 @@ try {
     )
       flags[name] = true;
     else if (
-      ["out", "target", "port", "at", "values"].includes(name) &&
+      ["out", "target", "port", "at", "values", "size", "symbols"].includes(
+        name,
+      ) &&
       args[i + 1] &&
       !args[i + 1].startsWith("--")
     )
@@ -57,10 +72,56 @@ try {
   const folder = path.resolve(positional[0] ?? "examples/vehicle");
   if (command === "help" || command === "--help")
     emit(
-      "LVGL Plus 0.1\nUsage: lvglplus <init|validate|dev|generate|build|test|screenshot|doctor> [project]\nOptions: --json --target NAME --out PATH --generated --wasm --gateway --port N --at MS --values FILE --update-baselines",
+      "LVGL Plus 0.2\nUsage: lvglplus <font|init|validate|dev|generate|build|test|screenshot|doctor|viewer|budget|bundle|verify-bundle|install-bundle|rollback-bundle|import-figma|migrate|mcp> [project]\nOptions: --json --target NAME --out PATH --generated --wasm --gateway --port N --at MS --values FILE --update-baselines",
     );
   else if (command === "doctor") emit(await doctor());
-  else if (command === "init") {
+  else if (command === "font") {
+    if (
+      !flags.out ||
+      !/^[A-Za-z_]\w*\.c$/.test(path.basename(String(flags.out)))
+    )
+      throw Error("--out C_identifier.c required");
+    const size = Number(flags.size ?? 28);
+    if (!Number.isInteger(size) || size < 8 || size > 128)
+      throw Error("Font size must be 8..128");
+    const output = path.resolve(String(flags.out));
+    await mkdir(path.dirname(output), { recursive: true });
+    await run(process.execPath, [
+      createRequire(import.meta.url).resolve("lv_font_conv/lv_font_conv.js"),
+      "--font",
+      folder,
+      "--size",
+      String(size),
+      "--symbols",
+      String(flags.symbols ?? "0123456789"),
+      "--bpp",
+      "4",
+      "--format",
+      "lvgl",
+      "--no-compress",
+      "-o",
+      output,
+    ]);
+    emit({ output, size });
+  } else if (command === "mcp") await serveMCP(folder);
+  else if (command === "verify-bundle") emit(await verifyBundle(folder));
+  else if (command === "install-bundle") {
+    if (!flags.out) throw Error("--out store required");
+    emit(await installBundle(folder, path.resolve(String(flags.out))));
+  } else if (command === "rollback-bundle") emit(await rollbackBundle(folder));
+  else if (command === "migrate")
+    emit(
+      await migrate(
+        folder,
+        path.resolve(String(flags.out ?? folder + "-migrated")),
+      ),
+    );
+  else if (command === "import-figma") {
+    if (!flags.out) throw Error("--out project required");
+    emit({
+      output: await importFigma(folder, path.resolve(String(flags.out))),
+    });
+  } else if (command === "init") {
     if (!positional[0]) throw new Error("init requires a destination");
     await initProject(folder);
     emit({ project: folder });
@@ -77,7 +138,28 @@ try {
   } else {
     const project = await loadProject(folder),
       target = typeof flags.target === "string" ? flags.target : undefined;
-    if (command === "validate")
+    if (command === "viewer")
+      emit({
+        output: await exportViewer(
+          project,
+          path.resolve(
+            String(flags.out ?? path.join(project.root, ".lvglplus/viewer")),
+          ),
+          target,
+        ),
+      });
+    else if (command === "bundle")
+      emit({
+        output: await createBundle(
+          project,
+          path.resolve(
+            String(flags.out ?? path.join(project.root, ".lvglplus/bundle")),
+          ),
+          target,
+        ),
+      });
+    else if (command === "budget") emit(await budget(project));
+    else if (command === "validate")
       emit({
         valid: true,
         diagnostics: project.diagnostics,
@@ -97,9 +179,12 @@ try {
       if (flags.wasm) {
         await run("python3", [
           path.join(repositoryRoot, "scripts/build_preview.py"),
+          ...(project.manifest.native?.sources.length
+            ? ["--project", project.root]
+            : []),
         ]);
         emit({
-          runtime: path.join(repositoryRoot, "packages/studio/public/runtime"),
+          runtime: runtimeDirectory(project),
         });
       } else
         emit({

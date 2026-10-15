@@ -134,7 +134,7 @@ lvp_context *lvp_create(const lvp_schema *s, const lvp_hal *config) {
     lvp_context *c;
     uint32_t i;
     uint8_t seen[LVP_SIGNAL_MAX] = {0};
-    if (!s || s->version != 1 || s->signal_count > LVP_SIGNAL_MAX ||
+    if (!s || (s->version != 1 && s->version != 2) || s->signal_count > LVP_SIGNAL_MAX ||
         (s->signal_count && (!s->signals || !s->evaluation_order)))
         return NULL;
     memset(&h, 0, sizeof(h));

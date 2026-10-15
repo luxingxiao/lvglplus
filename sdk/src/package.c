@@ -105,7 +105,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
     s->width = count(&r, 4096);
     s->height = count(&r, 4096);
     s->initial_page = text(&r);
-    if (s->version != 1 || !s->width || !s->height)
+    if ((s->version != 1 && s->version != 2) || !s->width || !s->height)
         r.failed = 1;
     s->signal_count = count(&r, LVP_SIGNAL_MAX);
     signals = memory(&r, s->signal_count * sizeof(*signals));
@@ -178,7 +178,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
         parent = word(&r);
         nodes[i].parent = parent == UINT32_MAX ? -1 : (int32_t)parent;
         nodes[i].command = text(&r);
-        if (nodes[i].kind > 7 || (parent != UINT32_MAX && parent >= i) ||
+        if (nodes[i].kind > 8 || (parent != UINT32_MAX && parent >= i) ||
             (parent == UINT32_MAX && nodes[i].kind != 0))
             r.failed = 1;
         nodes[i].property_count = count(&r, 64);
@@ -206,9 +206,9 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
                 r.failed = 1;
                 break;
             }
-            if ((prop == LVP_BIND_TEXT || prop == LVP_BIND_QUALITY) && kind != 1 && kind != 2)
+            if ((prop == LVP_BIND_TEXT || prop == LVP_BIND_QUALITY) && kind != 1 && kind != 2 && kind != 8)
                 r.failed = 1;
-            if (prop == LVP_BIND_VALUE && kind != 3 && kind != 4 && kind != 5)
+            if (prop == LVP_BIND_VALUE && kind != 3 && kind != 4 && kind != 5 && kind != 8)
                 r.failed = 1;
             if (prop == LVP_BIND_CHECKED && kind != 6)
                 r.failed = 1;

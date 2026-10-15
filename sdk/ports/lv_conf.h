@@ -15,10 +15,18 @@
 #define LV_FONT_MONTSERRAT_40 1
 #define LV_FONT_MONTSERRAT_48 1
 #define LV_USE_LODEPNG 1
+#ifdef LVP_MCU
+#define LV_USE_FS_STDIO 0
+#else
 #define LV_USE_FS_STDIO 1
+#endif
 #define LV_FS_STDIO_LETTER 'A'
 #define LV_FS_STDIO_PATH ""
 #define LV_USE_FLEX 1
 #define LV_USE_GRID 1
+#ifdef LVP_DRM
+#define LV_USE_LINUX_DRM 1
+#define LV_USE_EVDEV 1
+#endif
 #define LV_BUILD_EXAMPLES 0
 #endif

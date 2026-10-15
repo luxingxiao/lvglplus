@@ -36,6 +36,9 @@ export class PreviewRuntime {
       command: ["number", ["string"]],
       command_state: ["number", ["number"]],
       bounds: ["number", ["number", "number"]],
+      hit_test: ["number", ["number", "number"]],
+      locale: ["number", ["string"]],
+      restart_animations: [null, []],
       close: [null, []],
     };
     for (const [name, [ret, args]] of Object.entries(signatures))
@@ -141,6 +144,15 @@ export class PreviewRuntime {
     } finally {
       this.module._free(ptr);
     }
+  }
+  hitTest(x: number, y: number) {
+    return this.calls.hit_test(Math.round(x), Math.round(y));
+  }
+  locale(name: string) {
+    return this.calls.locale(name);
+  }
+  restartAnimations() {
+    this.calls.restart_animations();
   }
   close() {
     this.calls.close?.();

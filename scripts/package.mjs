@@ -32,6 +32,7 @@ for (const entry of [
   "README.md",
   "requirements-build.txt",
   "sdk",
+  "tools",
   "scripts",
   "cmake",
   "examples",

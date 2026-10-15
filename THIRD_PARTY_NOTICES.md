@@ -12,6 +12,8 @@ LVGL Plus source is Apache-2.0. Dependencies are not relicensed by this reposito
 | [Monaco Editor](https://github.com/microsoft/monaco-editor) | MIT | Local XML editor and worker |
 | [saxes](https://github.com/lddubeau/saxes) | ISC | XML parsing |
 | [ws](https://github.com/websockets/ws) | MIT | Local preview stream |
+| [lv_font_conv](https://github.com/lvgl/lv_font_conv) | MIT | Build-time font generation |
+| [Electron](https://github.com/electron/electron) | MIT plus bundled Chromium/Node notices | Optional desktop application shell |
 | [TypeScript](https://github.com/microsoft/TypeScript) | Apache-2.0 | Build tool |
 
 The pnpm lockfile and `requirements-build.txt` pin package resolution. Python transitive dependencies and npm transitive packages retain the licenses distributed in their packages. Bootstrap preserves the complete LVGL checkout and its library notices in `.deps/lvgl`; shipping a product with optional libraries requires retaining the notices for those selected libraries too.

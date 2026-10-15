@@ -1,4 +1,5 @@
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
+export const PROJECT_VERSION = 1;
 export type ValueType = "number" | "integer" | "boolean" | "string" | "enum";
 export type Quality = "valid" | "stale" | "invalid" | "disconnected";
 export interface Location {
@@ -61,7 +62,8 @@ export type WidgetKind =
   | "slider"
   | "arc"
   | "switch"
-  | "image";
+  | "image"
+  | "custom";
 export interface Binding {
   property: "text" | "value" | "checked" | "hidden" | "color" | "quality";
   signal: number;
@@ -93,6 +95,7 @@ export interface ProjectManifest {
   ui: string;
   model: string;
   sources?: string;
+  native?: { sources: string[] };
   lvglVersion: string;
   targets: Target[];
 }
@@ -126,9 +129,12 @@ export interface DataEvent {
 }
 export interface ReplayRecord {
   atMs: number;
+  qualities?: Record<string, Quality>;
+  timestamps?: Record<string, number>;
   values: Record<string, number | string | boolean>;
 }
 export interface SourceConfig {
+  adapters?: import("./types.js").AdapterSpec[];
   simulation?: Record<
     string,
     { min: number; max: number; periodMs: number; kind?: "sine" | "toggle" }
@@ -136,4 +142,29 @@ export interface SourceConfig {
   replay?: string;
   dbc?: string;
   mappings?: Record<string, string>;
+}
+
+export interface AdapterSpec {
+  name: string;
+  kind: "tcp-json" | "udp-json" | "serial-json" | "mqtt" | "modbus-tcp";
+  host?: string;
+  port?: number;
+  device?: string;
+  baud?: number;
+  topic?: string;
+  tls?: boolean;
+  mappings: Record<string, string>;
+  unit?: number;
+  address?: number;
+  count?: number;
+  pollMs?: number;
+  registers?: Record<
+    string,
+    {
+      offset: number;
+      type: "uint16" | "int16" | "uint32" | "float32";
+      factor?: number;
+      offsetValue?: number;
+    }
+  >;
 }

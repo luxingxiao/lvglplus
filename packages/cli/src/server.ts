@@ -1,7 +1,16 @@
 import http from "node:http";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { watch } from "node:fs";
-import { readFile, writeFile, rename, realpath, stat } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  rename,
+  realpath,
+  stat,
+  mkdir,
+  readdir,
+  rm,
+} from "node:fs/promises";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -16,6 +25,9 @@ import {
   type LoadedProject,
 } from "./project.js";
 import { ReplayPlayer, parseReplay, simulate } from "./data.js";
+import { Recorder } from "./recording.js";
+import { ProtocolAdapter } from "./protocols.js";
+import { budget, runtimeDirectory } from "./artifacts.js";
 
 const mime: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -47,6 +59,8 @@ export async function serve(folder: string, port = 5178) {
     start = Date.now(),
     player: ReplayPlayer | undefined,
     can: ChildProcess | undefined;
+  const recorder = new Recorder();
+  let adapter: ProtocolAdapter | undefined;
   let connected = true,
     canInterface = "vcan0",
     sourceError = "",
@@ -65,9 +79,14 @@ export async function serve(folder: string, port = 5178) {
       positionMs: player?.positionMs ?? 0,
       durationMs: player?.duration ?? 0,
       modelNowMs: time(),
+      adapters: (project.sources.adapters ?? []).map((c) => c.name),
+      adapterStats: adapter?.stats,
+      recording: recorder.active,
+      recordingError: recorder.error,
     };
   }
   function data(events: DataEvent[]) {
+    recorder.enqueue(events, time());
     for (const event of events) cache.set(event.signal, event);
     if (events.length) broadcast({ type: "data", events, modelNowMs: time() });
   }
@@ -75,6 +94,9 @@ export async function serve(folder: string, port = 5178) {
     const names = new Set([
       ...Object.keys(project.sources.simulation ?? {}),
       ...Object.values(project.sources.mappings ?? {}),
+      ...(project.sources.adapters ?? []).flatMap((c) =>
+        Object.values(c.mappings),
+      ),
     ]);
     data(
       [...names].map((signal) => ({
@@ -173,7 +195,15 @@ export async function serve(folder: string, port = 5178) {
   }
   async function changeSource(request: Record<string, unknown>) {
     const requested = String(request.mode ?? mode);
-    if (!["simulation", "replay", "manual", "can"].includes(requested))
+    if (
+      ![
+        "simulation",
+        "replay",
+        "manual",
+        "can",
+        ...(project.sources.adapters ?? []).map((c) => c.name),
+      ].includes(requested)
+    )
       throw new Error("Unknown source mode");
     if (
       request.speed !== undefined &&
@@ -212,7 +242,10 @@ export async function serve(folder: string, port = 5178) {
       await inside(project.root, ".lvglplus/gateway/lvp_can_gateway");
     }
     if (requested !== mode || (requested === "can" && iface !== canInterface)) {
+      if (recorder.active) await recorder.stop();
       stopCan();
+      adapter?.stop();
+      adapter = undefined;
       mode = requested;
       player = nextPlayer;
       start = Date.now();
@@ -222,6 +255,18 @@ export async function serve(folder: string, port = 5178) {
       retry = 500;
       mark("disconnected");
       if (requested === "can") await startCan(iface);
+      const config = project.sources.adapters?.find(
+        (c) => c.name === requested,
+      );
+      if (config) {
+        adapter = new ProtocolAdapter(config, project.ir, (ok, error) => {
+          connected = ok;
+          sourceError = error;
+          if (!ok) mark("disconnected");
+          else if (error) mark("invalid");
+        });
+        adapter.start();
+      }
     }
     if (mode === "replay" && player) {
       if (request.speed !== undefined) player.setSpeed(Number(request.speed));
@@ -236,6 +281,7 @@ export async function serve(folder: string, port = 5178) {
   async function reload() {
     try {
       const next = await loadProject(project.root);
+
       let nextPlayer: ReplayPlayer | undefined;
       if (mode === "replay") {
         if (!next.sources.replay) throw new Error("No replay configured");
@@ -254,6 +300,23 @@ export async function serve(folder: string, port = 5178) {
       }
       const oldPosition = player?.positionMs ?? 0;
       project = next;
+      if (adapter) {
+        adapter.stop();
+        adapter = undefined;
+        const config = project.sources.adapters?.find((c) => c.name === mode);
+        if (config) {
+          adapter = new ProtocolAdapter(config, project.ir, (ok, error) => {
+            connected = ok;
+            sourceError = error;
+            if (!ok) mark("disconnected");
+            else if (error) mark("invalid");
+          });
+          adapter.start();
+        } else {
+          mode = "manual";
+          connected = true;
+        }
+      }
       for (const [name, event] of cache) {
         const definition = project.ir.signals.find(
           (signal) => signal.name === name,
@@ -321,7 +384,29 @@ export async function serve(folder: string, port = 5178) {
     ...(project.manifest.sources ? [project.manifest.sources] : []),
   ]);
   const watcher = watch(project.root, { recursive: true }, (_, filename) => {
-    if (!filename || !files.has(filename.replaceAll("\\", "/"))) return;
+    if (!filename) return;
+    const changed = filename.replaceAll("\\", "/");
+    if (project.manifest.native?.sources.includes(changed)) {
+      broadcast({
+        type: "diagnostics",
+        diagnostics: [
+          {
+            file: changed,
+            line: 1,
+            column: 1,
+            severity: "warning",
+            code: "CUSTOM_REBUILD",
+            message:
+              "Custom C changed. Run lvglplus build <project> --wasm, then reload the browser.",
+          },
+        ],
+      });
+      return;
+    }
+    const resource = flatten(project.ir).some(
+      (n) => n.props.src?.slice(2) === changed,
+    );
+    if (!files.has(changed) && !resource) return;
     if (reloadTimer) clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => {
       void reload();
@@ -402,6 +487,88 @@ export async function serve(folder: string, port = 5178) {
         });
         return;
       }
+      if (url.pathname === "/api/record" && req.method === "POST") {
+        const request = await body(req);
+        if (request.action === "stop") {
+          respond(200, await recorder.stop());
+          return;
+        }
+        if (mode === "replay")
+          throw new Error("Switch to a live/manual source before recording");
+        const name = String(request.name ?? "drive-" + Date.now());
+        if (!/^[A-Za-z_][\w-]{0,63}$/.test(name))
+          throw new Error("Invalid recording name");
+        await mkdir(path.join(project.root, ".lvglplus"), { recursive: true });
+        const storage = await inside(project.root, ".lvglplus");
+        await mkdir(path.join(storage, "recordings"), { recursive: true });
+        const file = await inside(
+          project.root,
+          ".lvglplus/recordings/" + name + ".jsonl",
+          false,
+        );
+        await recorder.start(file, time());
+        respond(200, { path: ".lvglplus/recordings/" + name + ".jsonl" });
+        return;
+      }
+      if (url.pathname === "/api/resources" && req.method === "GET") {
+        const entries = [];
+        try {
+          for (const name of await readdir(
+            await inside(project.root, "assets"),
+          )) {
+            if (!/^[A-Za-z_][\w.-]*\.png$/.test(name)) continue;
+            const file = await inside(project.root, "assets/" + name);
+            const info = await stat(file);
+            if (info.isFile())
+              entries.push({ path: "assets/" + name, bytes: info.size });
+          }
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+        }
+        respond(200, { resources: entries });
+        return;
+      }
+      if (url.pathname === "/api/resource" && req.method === "POST") {
+        const request = await body(req);
+        const name = String(request.path);
+        if (!/^assets\/[A-Za-z_][\w.-]*\.png$/.test(name))
+          throw new Error("Resources must be assets/name.png");
+        await mkdir(path.join(project.root, "assets"), { recursive: true });
+        const file = await inside(project.root, name, false);
+        if (request.operation === "delete") {
+          if (flatten(project.ir).some((n) => n.props.src === "A:" + name))
+            throw new Error("Resource is referenced by the active UI");
+          await rm(await inside(project.root, name));
+        } else {
+          if (
+            typeof request.base64 !== "string" ||
+            !/^[A-Za-z0-9+/]*={0,2}$/.test(request.base64)
+          )
+            throw new Error("Invalid resource encoding");
+          const bytes = Buffer.from(request.base64, "base64");
+          if (
+            bytes.length < 24 ||
+            bytes.length > 1024 * 1024 ||
+            !bytes
+              .subarray(0, 8)
+              .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) ||
+            bytes.readUInt32BE(16) < 1 ||
+            bytes.readUInt32BE(20) < 1 ||
+            bytes.readUInt32BE(16) > 4096 ||
+            bytes.readUInt32BE(20) > 4096
+          )
+            throw new Error("Expected PNG <=1 MiB, dimensions <=4096");
+          const temporary = file + ".lvp-" + randomBytes(8).toString("hex");
+          await writeFile(temporary, bytes, { flag: "wx" });
+          await rename(temporary, file);
+        }
+        respond(200, { ok: true, path: name });
+        return;
+      }
+      if (url.pathname === "/api/budget" && req.method === "GET") {
+        respond(200, await budget(project));
+        return;
+      }
       if (url.pathname === "/api/package" && req.method === "GET") {
         const selected = project.ir.targets.find((t) => t.name === target)!;
         res.writeHead(200, { "Content-Type": "application/octet-stream" });
@@ -443,8 +610,8 @@ export async function serve(folder: string, port = 5178) {
         )
           throw new Error("Only UI and model XML can be saved");
         const filename = await inside(project.root, file),
-          temp = filename + ".lvp-tmp";
-        await writeFile(temp, request.content);
+          temp = filename + ".lvp-" + randomBytes(8).toString("hex");
+        await writeFile(temp, request.content, { flag: "wx" });
         await rename(temp, filename);
         const result = await reload();
         respond(200, result);
@@ -486,6 +653,19 @@ export async function serve(folder: string, port = 5178) {
       }
       if (req.method !== "GET") {
         respond(404, { error: "Unknown endpoint" });
+        return;
+      }
+      if (
+        url.pathname === "/runtime/lvp.wasm" &&
+        project.manifest.native?.sources.length
+      ) {
+        const name = decodeURIComponent(url.pathname.slice("/runtime/".length));
+        const file = await inside(runtimeDirectory(project), name);
+        res.writeHead(200, {
+          "Content-Type":
+            mime[path.extname(file)] ?? "application/octet-stream",
+        });
+        res.end(await readFile(file));
         return;
       }
       const staticRoot = path.join(repositoryRoot, "packages/studio/dist");
@@ -533,6 +713,7 @@ export async function serve(folder: string, port = 5178) {
     if (mode === "simulation")
       data(simulate(project.ir, project.sources, now - start, now));
     else if (mode === "replay" && player) data(player.advance(now));
+    else if (adapter) data(adapter.drain());
     broadcast({ type: "source", ...sourceState() });
   }, 100);
   await new Promise<void>((resolve, reject) => {
@@ -547,6 +728,8 @@ export async function serve(folder: string, port = 5178) {
     server,
     close: async () => {
       closed = true;
+      adapter?.stop();
+      await recorder.stop();
       clearInterval(interval);
       if (reloadTimer) clearTimeout(reloadTimer);
       stopCan();

@@ -34,7 +34,13 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: python3 scripts/bootstrap.py --wasm
       - run: pnpm build:wasm && pnpm build
-      - run: pnpm test:render && pnpm test:dbc
+      - run: pnpm test && pnpm test:render && pnpm test:extensions && pnpm test:dbc && pnpm test:serial
+      - name: Compile Linux DRM production target
+        run: |
+          sudo apt-get update && sudo apt-get install -y libdrm-dev
+          node packages/cli/dist/main.js generate examples/vehicle
+          cmake -S . -B build/drm -DLVP_LINUX_DRM=ON -DBUILD_TESTING=OFF -DLVP_UI_DIR="$PWD/examples/vehicle/.lvglplus/generated" -DLVP_DBC_DIR="$PWD/examples/vehicle/.lvglplus/dbc"
+          cmake --build build/drm --target lvp_drm -j 4
       - name: Build Linux gateway with project codec
         run: |
           node packages/cli/dist/main.js build examples/vehicle --gateway

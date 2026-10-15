@@ -22,6 +22,7 @@ const kinds = new Set([
   "arc",
   "switch",
   "image",
+  "custom",
 ]);
 export const properties = new Set([
   "x",
@@ -50,6 +51,9 @@ export const properties = new Set([
   "navigate",
   "startAngle",
   "endAngle",
+  "textKey",
+  "customType",
+  "font",
 ]);
 const types = new Set(["number", "integer", "boolean", "string", "enum"]);
 const identifier = /^[A-Za-z_][A-Za-z0-9_.]*$/;
@@ -73,12 +77,12 @@ export function compile(input: CompileInput): CompileResult {
   const ui = parseXml(input.ui, input.uiFile ?? input.manifest.ui, diagnostics);
   if (!model || !ui) return { diagnostics };
   attributes(model, ["version"]);
-  attributes(ui, ["version", "start"]);
+  attributes(ui, ["version", "start", "locale"]);
   if (model.tag !== "model" || model.attrs.version !== "1")
     error(model, "MODEL_ROOT", 'Expected <model version="1">');
   if (ui.tag !== "dashboard" || ui.attrs.version !== "1")
     error(ui, "UI_ROOT", 'Expected <dashboard version="1">');
-  if (input.manifest.formatVersion !== FORMAT_VERSION)
+  if (input.manifest.formatVersion !== 1)
     error(ui, "VERSION", "Unsupported project formatVersion");
   if (!/^[A-Za-z_][\w]*$/.test(input.manifest.name ?? ""))
     error(ui, "PROJECT_NAME", "Project name must be a C identifier");
@@ -241,6 +245,36 @@ export function compile(input: CompileInput): CompileResult {
       ...(node.attrs.target ? { signal: target, value } : {}),
     });
   }
+  const locales = new Map<string, Map<string, string>>();
+  const defaultLocale = ui.attrs.locale ?? "en";
+  for (const section of ui.children.filter((n) => n.tag === "translations")) {
+    attributes(section, []);
+    for (const locale of section.children) {
+      attributes(locale, ["name"]);
+      if (
+        locale.tag !== "locale" ||
+        !/^[A-Za-z][A-Za-z0-9_-]{0,15}$/.test(locale.attrs.name ?? "") ||
+        locales.has(locale.attrs.name)
+      )
+        error(locale, "LOCALE", "Expected unique locale name");
+      const entries = new Map<string, string>();
+      for (const entry of locale.children) {
+        attributes(entry, ["key", "value"]);
+        if (
+          entry.tag !== "message" ||
+          !identifier.test(entry.attrs.key ?? "") ||
+          entries.has(entry.attrs.key) ||
+          entry.attrs.value === undefined ||
+          new TextEncoder().encode(entry.attrs.value ?? "").length > 4096
+        )
+          error(entry, "TRANSLATION", "Expected unique message key and value");
+        entries.set(entry.attrs.key, entry.attrs.value ?? "");
+      }
+      locales.set(locale.attrs.name, entries);
+    }
+  }
+  if (locales.size > 16 || (locales.size && !locales.has(defaultLocale)))
+    error(ui, "LOCALE", "Default locale is missing or exceeds 16 locales");
   const components = new Map<string, XmlNode>(),
     styles = new Map<string, Record<string, string>>();
   for (const node of ui.children) {
@@ -267,7 +301,7 @@ export function compile(input: CompileInput): CompileResult {
             error(style, "PROPERTY", `Unknown style property ${key}`);
         styles.set(name, props);
       }
-    } else if (node.tag !== "page")
+    } else if (!["page", "translations"].includes(node.tag))
       error(node, "UI_ELEMENT", `Unknown dashboard child ${node.tag}`);
   }
   const ids = new Set<string>();
@@ -389,7 +423,10 @@ export function compile(input: CompileInput): CompileResult {
     }
     for (const [key, value] of Object.entries(node.attrs)) {
       if (["id", "style"].includes(key)) continue;
-      if (!properties.has(key))
+      if (
+        !properties.has(key) &&
+        !(node.tag === "custom" && /^custom\.[A-Za-z_]\w*$/.test(key))
+      )
         error(node, "PROPERTY", `Unknown property ${key}`);
       else props[key] = value;
     }
@@ -467,10 +504,82 @@ export function compile(input: CompileInput): CompileResult {
     }
     if (Number(props.min ?? 0) >= Number(props.max ?? 100))
       error(node, "RANGE", "min must be smaller than max");
+    if (node.tag === "custom" && !/^[A-Za-z_]\w*$/.test(props.customType ?? ""))
+      error(node, "CUSTOM", "custom requires customType C registry name");
+    if (props.font && !/^[A-Za-z_]\w*$/.test(props.font))
+      error(node, "FONT", "font must be a registered C font name");
+    if (props.textKey) {
+      if (!["text", "button"].includes(node.tag))
+        error(node, "TRANSLATION", "textKey requires text or button");
+      for (const [locale, entries] of locales) {
+        const text = entries.get(props.textKey);
+        if (text === undefined)
+          error(node, "TRANSLATION", `Missing ${locale}:${props.textKey}`);
+        else props["l10n." + locale] = text;
+      }
+      if (!locales.size)
+        error(node, "TRANSLATION", "textKey requires translations");
+      props.locale = defaultLocale;
+    }
     const bindings: Binding[] = [];
     let command: string | undefined;
     for (const child of node.children) {
-      if (child.tag === "bind") {
+      if (child.tag === "animate") {
+        attributes(child, [
+          "property",
+          "from",
+          "to",
+          "durationMs",
+          "delayMs",
+          "repeat",
+          "easing",
+        ]);
+        const a = child.attrs,
+          property = a.property;
+        if (
+          !["x", "y", "opacity", "value"].includes(property) ||
+          props["anim." + property]
+        )
+          error(
+            child,
+            "ANIMATION",
+            "Expected unique x/y/opacity/value animation",
+          );
+        for (const key of ["from", "to", "durationMs", "delayMs", "repeat"]) {
+          const v = Number(a[key] ?? (key === "durationMs" ? 300 : 0));
+          if (
+            !Number.isInteger(v) ||
+            v < (key === "from" || key === "to" ? -32767 : 0) ||
+            v > (key === "from" || key === "to" ? 32767 : 3600000)
+          )
+            error(child, "ANIMATION", `Invalid ${key}`);
+        }
+        if (
+          Number(a.durationMs ?? 300) < 1 ||
+          (property === "opacity" &&
+            [a.from, a.to].some(
+              (v) => Number(v ?? 0) < 0 || Number(v ?? 0) > 255,
+            ))
+        )
+          error(child, "ANIMATION", "Invalid animation range/duration");
+        if (a.easing && !["linear", "ease-in-out"].includes(a.easing))
+          error(child, "ANIMATION", "Unsupported easing");
+        if (
+          property === "value" &&
+          !["bar", "slider", "arc"].includes(node.tag)
+        )
+          error(child, "ANIMATION", "value animation requires bar/slider/arc");
+        props["anim." + property] = [
+          a.from ?? 0,
+          a.to ?? 0,
+          a.durationMs ?? 300,
+          a.delayMs ?? 0,
+          a.repeat ?? 0,
+          a.easing === "ease-in-out" ? 1 : 0,
+        ]
+          .map(Number)
+          .join(",");
+      } else if (child.tag === "bind") {
         attributes(child, ["property", "signal", "direction", "format"]);
         if (child.children.length)
           error(child, "BIND", "bind cannot contain children");
@@ -515,11 +624,14 @@ export function compile(input: CompileInput): CompileResult {
           property !== "quality"
         )
           error(child, "BIND_TYPE", "String signals only bind text or quality");
-        if (property === "text" && !["text", "button"].includes(node.tag))
+        if (
+          property === "text" &&
+          !["text", "button", "custom"].includes(node.tag)
+        )
           error(child, "BIND_TYPE", "Text binding requires text or button");
         if (
           property === "value" &&
-          !["bar", "slider", "arc"].includes(node.tag)
+          !["bar", "slider", "arc", "custom"].includes(node.tag)
         )
           error(
             child,
@@ -528,7 +640,10 @@ export function compile(input: CompileInput): CompileResult {
           );
         if (property === "checked" && node.tag !== "switch")
           error(child, "BIND_TYPE", "Checked binding requires switch");
-        if (property === "quality" && !["text", "button"].includes(node.tag))
+        if (
+          property === "quality" &&
+          !["text", "button", "custom"].includes(node.tag)
+        )
           error(child, "BIND_TYPE", "Quality binding requires text or button");
         if (
           twoWay &&
@@ -599,7 +714,7 @@ export function compile(input: CompileInput): CompileResult {
         bindings,
         command,
         children: node.children
-          .filter((n) => !["bind", "on"].includes(n.tag))
+          .filter((n) => !["bind", "on", "animate"].includes(n.tag))
           .flatMap((n, i) => build(n, id, i, chain, fills)),
         loc: node.loc,
       },
@@ -624,6 +739,34 @@ export function compile(input: CompileInput): CompileResult {
     node.children.forEach(checkNavigation);
   }
   pages.forEach(checkNavigation);
+  function checkProps(node: UINode) {
+    if (Object.keys(node.props).length > 64)
+      error(
+        { loc: node.loc } as XmlNode,
+        "PROPERTY_LIMIT",
+        "At most 64 lowered properties per node",
+      );
+    for (const binding of node.bindings)
+      if (node.props["anim." + binding.property])
+        error(
+          { loc: node.loc } as XmlNode,
+          "ANIMATION",
+          "Animation conflicts with binding",
+        );
+    if (
+      node.props.textKey &&
+      node.bindings.some(
+        (b) => b.property === "text" || b.property === "quality",
+      )
+    )
+      error(
+        { loc: node.loc } as XmlNode,
+        "TRANSLATION",
+        "Translated text cannot also have a text binding",
+      );
+    node.children.forEach(checkProps);
+  }
+  pages.forEach(checkProps);
   if (diagnostics.some((d) => d.severity === "error")) return { diagnostics };
   return {
     diagnostics,

@@ -1,6 +1,6 @@
 {
   "name": "@lvglplus/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "Apache-2.0",
   "bin": {
@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@lvglplus/compiler": "workspace:*",
+    "lv_font_conv": "1.5.3",
     "ws": "8.22.0"
   },
   "devDependencies": {

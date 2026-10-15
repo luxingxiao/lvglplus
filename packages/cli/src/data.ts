@@ -29,6 +29,20 @@ export function parseReplay(text: string, ir: ProjectIR): ReplayRecord[] {
         )
           throw new Error(`Invalid replay signal ${name} at line ${index + 1}`);
       }
+      for (const [name, q] of Object.entries(row.qualities ?? {}))
+        if (
+          !(name in row.values) ||
+          !["valid", "stale", "invalid", "disconnected"].includes(q)
+        )
+          throw new Error("Invalid replay quality");
+      for (const [name, t] of Object.entries(row.timestamps ?? {}))
+        if (
+          !(name in row.values) ||
+          !Number.isFinite(t) ||
+          t < 0 ||
+          t > row.atMs
+        )
+          throw new Error("Invalid replay timestamp");
       return row;
     });
   for (let i = 1; i < rows.length; i++)
@@ -59,20 +73,23 @@ export class ReplayPlayer {
           .map((s) => [s.name, s.initial]),
       );
     const timestamps: Record<string, number> = {};
+    const qualities: Record<string, DataEvent["quality"]> = {};
     while (
       this.cursor < this.records.length &&
       this.records[this.cursor].atMs <= this.positionMs
     ) {
       const row = this.records[this.cursor++];
       Object.assign(values, row.values);
-      for (const signal of Object.keys(row.values))
-        timestamps[signal] = row.atMs;
+      for (const signal of Object.keys(row.values)) {
+        timestamps[signal] = row.timestamps?.[signal] ?? row.atMs;
+        qualities[signal] = row.qualities?.[signal] ?? "valid";
+      }
     }
     return Object.entries(values).map(([signal, value]) => ({
       signal,
       value,
       timestampMs: timestamps[signal] ?? 0,
-      quality: "valid",
+      quality: qualities[signal] ?? "valid",
     }));
   }
   setSpeed(speed: number) {
@@ -95,7 +112,12 @@ export class ReplayPlayer {
     ) {
       const row = this.records[this.cursor++];
       for (const [signal, value] of Object.entries(row.values))
-        events.push({ signal, value, timestampMs: row.atMs, quality: "valid" });
+        events.push({
+          signal,
+          value,
+          timestampMs: row.timestamps?.[signal] ?? row.atMs,
+          quality: row.qualities?.[signal] ?? "valid",
+        });
     }
     return events;
   }

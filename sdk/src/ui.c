@@ -17,7 +17,8 @@ struct lvp_ui {
     int owns_display, applying;
     int32_t pointer_x, pointer_y;
     int pressed;
-    uint64_t now;
+    uint64_t now, animation_epoch;
+    int animation_started;
     binding_state *bindings;
 };
 struct binding_state {
@@ -27,6 +28,53 @@ struct binding_state {
     lvp_subscription *subscription;
     binding_state *next;
 };
+static const lvp_widget_factory *factories[16];
+static uint32_t factory_count;
+static struct {
+    const char *name;
+    const void *font;
+} fonts[16];
+static uint32_t font_count;
+lvp_result lvp_ui_register_widget(const lvp_widget_factory *factory) {
+    uint32_t i;
+    if (!factory || factory->abi != LVP_WIDGET_ABI || !factory->name || !factory->create)
+        return LVP_TYPE;
+    for (i = 0; i < factory_count; i++)
+        if (!strcmp(factories[i]->name, factory->name))
+            return LVP_ERROR;
+    if (factory_count == 16)
+        return LVP_FULL;
+    factories[factory_count++] = factory;
+    return LVP_OK;
+}
+lvp_result lvp_ui_register_font(const char *name, const void *value) {
+    uint32_t i;
+    if (!name || !value)
+        return LVP_TYPE;
+    for (i = 0; i < font_count; i++)
+        if (!strcmp(fonts[i].name, name))
+            return LVP_ERROR;
+    if (font_count == 16)
+        return LVP_FULL;
+    fonts[font_count].name = name;
+    fonts[font_count++].font = value;
+    return LVP_OK;
+}
+static const char *node_property(const lvp_node_def *node, const char *name) {
+    uint32_t i;
+    for (i = 0; i < node->property_count; i++)
+        if (!strcmp(node->properties[i].name, name))
+            return node->properties[i].value;
+    return NULL;
+}
+static const lvp_widget_factory *node_factory(const lvp_node_def *node) {
+    const char *name = node_property(node, "customType");
+    uint32_t i;
+    for (i = 0; name && i < factory_count; i++)
+        if (!strcmp(factories[i]->name, name))
+            return factories[i];
+    return NULL;
+}
 static uint32_t clock_ms;
 static uint32_t tick_clock(void) {
     return clock_ms;
@@ -142,6 +190,11 @@ static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *va
                          ui->schema->signals[signal].type == LVP_STRING);
         if (ui->labels[b->node])
             lv_label_set_text(ui->labels[b->node], text);
+        else if (ui->schema->nodes[b->node].kind == 8) {
+            const lvp_widget_factory *f = node_factory(&ui->schema->nodes[b->node]);
+            if (f && f->property)
+                f->property(obj, "text", text);
+        }
         break;
     case LVP_BIND_VALUE:
         if (value->number >= INT32_MIN && value->number <= INT32_MAX) {
@@ -152,6 +205,12 @@ static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *va
                 lv_slider_set_value(obj, n, LV_ANIM_OFF);
             else if (ui->schema->nodes[b->node].kind == 5)
                 lv_arc_set_value(obj, n);
+            else if (ui->schema->nodes[b->node].kind == 8) {
+                const lvp_widget_factory *f = node_factory(&ui->schema->nodes[b->node]);
+                snprintf(text, sizeof(text), "%d", n);
+                if (f && f->property)
+                    f->property(obj, "value", text);
+            }
         }
         lv_obj_set_style_opa(obj, value->quality == LVP_VALID ? LV_OPA_COVER : LV_OPA_40, 0);
         break;
@@ -175,6 +234,11 @@ static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *va
         static const char *q[] = {"LIVE", "STALE", "INVALID", "OFFLINE"};
         if (ui->labels[b->node])
             lv_label_set_text(ui->labels[b->node], q[value->quality]);
+        else if (ui->schema->nodes[b->node].kind == 8) {
+            const lvp_widget_factory *factory = node_factory(&ui->schema->nodes[b->node]);
+            if (factory && factory->property)
+                factory->property(obj, "quality", q[value->quality]);
+        }
         break;
     }
     default:
@@ -248,7 +312,12 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
         lv_obj_set_align(obj, align);
     } else if (!strcmp(name, "fontSize"))
         lv_obj_set_style_text_font(obj, font(n), 0);
-    else if (!strcmp(name, "textAlign"))
+    else if (!strcmp(name, "font")) {
+        uint32_t i;
+        for (i = 0; i < font_count; i++)
+            if (!strcmp(fonts[i].name, value))
+                lv_obj_set_style_text_font(obj, fonts[i].font, 0);
+    } else if (!strcmp(name, "textAlign"))
         lv_obj_set_style_text_align(obj,
                                     !strcmp(value, "center")  ? LV_TEXT_ALIGN_CENTER
                                     : !strcmp(value, "right") ? LV_TEXT_ALIGN_RIGHT
@@ -275,6 +344,11 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
             lv_arc_set_value(obj, n);
     } else if (!strcmp(name, "src") && kind == 7)
         lv_image_set_src(obj, value);
+    else if (kind == 8) {
+        const lvp_widget_factory *f = node_factory(&ui->schema->nodes[index]);
+        if (f && f->property)
+            f->property(obj, name, value);
+    }
 }
 static int make_objects(lvp_ui *ui) {
     uint32_t i, j;
@@ -315,6 +389,12 @@ static int make_objects(lvp_ui *ui) {
             case 7:
                 obj = lv_image_create(parent);
                 break;
+            case 8: {
+                const lvp_widget_factory *factory = node_factory(d);
+                if (factory)
+                    obj = factory->create(parent);
+                break;
+            }
             default:
                 return 0;
             }
@@ -356,8 +436,30 @@ static int make_objects(lvp_ui *ui) {
             lv_slider_set_range(obj, min, max);
         else if (d->kind == 5)
             lv_arc_set_range(obj, min, max);
-        for (j = 0; j < d->property_count; j++)
-            property(ui, i, d->properties[j].name, d->properties[j].value);
+        for (j = 0; j < d->property_count; j++) {
+            const char *k = d->properties[j].name;
+            if (!strcmp(k, "font")) {
+                uint32_t f;
+                int found = 0;
+                for (f = 0; f < font_count; f++)
+                    if (!strcmp(fonts[f].name, d->properties[j].value))
+                        found = 1;
+                if (!found)
+                    return 0;
+            }
+            property(ui, i, k, d->properties[j].value);
+        }
+        {
+            const char *locale = node_property(d, "locale");
+            char key[32];
+            const char *translated;
+            if (locale && ui->labels[i]) {
+                snprintf(key, sizeof(key), "l10n.%s", locale);
+                translated = node_property(d, key);
+                if (translated)
+                    lv_label_set_text(ui->labels[i], translated);
+            }
+        }
         if (d->kind == 5) {
             int start = 135, end = 405;
             for (j = 0; j < d->property_count; j++) {
@@ -384,7 +486,7 @@ static int make_objects(lvp_ui *ui) {
             if (b->definition->two_way)
                 lv_obj_add_event_cb(obj, write_binding, LV_EVENT_VALUE_CHANGED, b);
         }
-        if (d->kind == 2) {
+        if (d->kind == 2 || d->kind == 8) {
             binding_state *b = calloc(1, sizeof(*b));
             if (!b)
                 return 0;
@@ -502,6 +604,39 @@ void lvp_ui_tick(lvp_ui *ui, uint64_t now) {
         clock_ms = (uint32_t)now;
         lv_tick_set_cb(tick_clock);
     }
+    if (!ui->animation_started || now < ui->animation_epoch) {
+        ui->animation_epoch = now;
+        ui->animation_started = 1;
+    }
+    {
+        uint32_t i, j;
+        for (i = 0; i < ui->schema->node_count; i++) {
+            const lvp_node_def *d = &ui->schema->nodes[i];
+            for (j = 0; j < d->property_count; j++)
+                if (!strncmp(d->properties[j].name, "anim.", 5)) {
+                    int from, to, duration, delay, repeat, easing;
+                    uint64_t elapsed = now - ui->animation_epoch, cycle;
+                    double t;
+                    char value[32];
+                    if (sscanf(d->properties[j].value, "%d,%d,%d,%d,%d,%d", &from, &to, &duration, &delay,
+                               &repeat, &easing) != 6 ||
+                        duration < 1 || delay < 0 || repeat < 0)
+                        continue;
+                    if (elapsed < (uint64_t)delay)
+                        t = 0;
+                    else {
+                        elapsed -= (uint64_t)delay;
+                        cycle = elapsed / (uint32_t)duration;
+                        t = cycle > (uint64_t)repeat ? 1.0
+                                                     : (double)(elapsed % (uint32_t)duration) / duration;
+                    }
+                    if (easing)
+                        t = t * t * (3 - 2 * t);
+                    snprintf(value, sizeof(value), "%d", (int)lround(from + (to - from) * t));
+                    property(ui, i, d->properties[j].name + 5, value);
+                }
+        }
+    }
     lvp_tick(ui->context, now);
     lv_timer_handler();
     lv_refr_now(ui->display);
@@ -544,4 +679,53 @@ lvp_result lvp_ui_bounds(lvp_ui *ui, uint32_t node, int32_t *x, int32_t *y, int3
     *w = lv_area_get_width(&a);
     *h = lv_area_get_height(&a);
     return LVP_OK;
+}
+
+lvp_result lvp_ui_locale(lvp_ui *ui, const char *locale) {
+    uint32_t i;
+    int found = 0;
+    char key[32];
+    if (!ui || !locale || strlen(locale) > 16)
+        return LVP_TYPE;
+    snprintf(key, sizeof(key), "l10n.%s", locale);
+    for (i = 0; i < ui->schema->node_count; i++) {
+        const char *text = node_property(&ui->schema->nodes[i], key);
+        if (text && ui->labels[i]) {
+            lv_label_set_text(ui->labels[i], text);
+            found = 1;
+        }
+    }
+    return found ? LVP_OK : LVP_NOT_FOUND;
+}
+void lvp_ui_restart_animations(lvp_ui *ui) {
+    if (ui)
+        ui->animation_started = 0;
+}
+
+/* Internal two-phase reload helpers live here so production rendering need not link the package loader. */
+lvp_ui *lvp_ui_candidate(lvp_ui *old, lvp_context *context) {
+    return old && !old->owns_display ? lvp_ui_attach(context, old->display) : lvp_ui_create(context);
+}
+void lvp_ui_commit_candidate(lvp_ui *old, lvp_ui *next) {
+    if (old && !old->owns_display) {
+        next->previous_screen = old->previous_screen;
+        old->previous_screen = NULL;
+    }
+}
+
+int32_t lvp_ui_hit_test(lvp_ui *ui, int32_t x, int32_t y) {
+    uint32_t i;
+    lv_area_t bounds;
+    if (!ui)
+        return -1;
+    for (i = ui->schema->node_count; i > 0; i--) {
+        lv_obj_t *object = ui->objects[i - 1];
+        if (!object || !lv_obj_is_visible(object) ||
+            lv_obj_get_screen(object) != lv_display_get_screen_active(ui->display))
+            continue;
+        lv_obj_get_coords(object, &bounds);
+        if (x >= bounds.x1 && x <= bounds.x2 && y >= bounds.y1 && y <= bounds.y2)
+            return (int32_t)i - 1;
+    }
+    return -1;
 }

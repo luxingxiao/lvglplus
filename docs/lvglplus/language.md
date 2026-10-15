@@ -74,3 +74,6 @@ IR 含 formatVersion、name、lvglVersion、targets、signals、evaluationOrder�
 包使用 little-endian，魔数 `LVP1`，随后是版本、尺寸、初始页面、信号定义/指令、求值顺序、命令和前序扁平节点。字符串为 uint32 字节长度加 UTF-8 数据；数值为 IEEE754 float64；父索引小于子索引，顶层使用 UINT32_MAX。
 
 读取器限制总包 8 MiB、字符串 4096 字节、信号/节点/绑定/指令数量，校验版本、索引、核心类型与绑定形态，并拒绝截断/尾随数据。格式仍处于 0.x，升级必须修改显式版本或提供迁移；不支持把未知新格式静默当作旧格式加载。
+
+
+0.2.0 扩展：公共 IR/二进制包为 v2，XML/project 仍为 v1；翻译、动画、自定义控件和字体语法见 [P3–P5](p3-p5.md)。SDK 同时接受旧 v1 包；旧运行时会拒绝新 v2 包。

@@ -1,6 +1,6 @@
 {
   "name": "lvglplus-workspace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -23,7 +23,11 @@
     "test:linux": "node scripts/test_linux.mjs",
     "benchmark": "node scripts/benchmark.mjs",
     "release:pack": "node scripts/package.mjs",
-    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\" \"tests/*.mjs\" \"scripts/*.mjs\""
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css}\" \"tests/*.mjs\" \"scripts/*.mjs\"",
+    "test:extensions": "node scripts/test_extensions.mjs",
+    "test:serial": "python3 tests/test_serial.py",
+    "desktop": "pnpm --filter @lvglplus/desktop start",
+    "desktop:pack": "pnpm --filter @lvglplus/desktop dist"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

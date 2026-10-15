@@ -38,6 +38,7 @@ export const widgetKinds = [
   "arc",
   "switch",
   "image",
+  "custom",
 ];
 export const bindingKinds = [
   "text",

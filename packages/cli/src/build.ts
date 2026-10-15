@@ -73,6 +73,15 @@ export async function buildNative(
     buildDir,
     "-DCMAKE_BUILD_TYPE=Debug",
     "-DBUILD_TESTING=OFF",
+    `-DLVP_CUSTOM_SOURCES=${(
+      await Promise.all(
+        (project.manifest.native?.sources ?? []).map(async (name) => {
+          if (!/\.(c|cc|cpp)$/.test(name) || name.includes(";"))
+            throw Error("Invalid custom C source");
+          return inside(project.root, name);
+        }),
+      )
+    ).join(";")}`,
     ...(generated
       ? [`-DLVP_UI_DIR=${output}`, `-DLVP_UI_NAME=${project.ir.name}`]
       : ["-DLVP_UI_DIR="]),
