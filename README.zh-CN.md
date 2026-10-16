@@ -50,6 +50,19 @@ pnpm test:declarative
 
 源码实现与平台验收分别追踪：Linux、macOS 和 Windows 的工具链与核心 CI 已通过，Linux 的 vcan/CAN FD 软件链路及 DRM 目标编译也已通过。Electron 桌面发行、Figma 宿主、DRM 实屏、真实收发器和 MCU 实机仍需验收；交叉编译不代表板卡适配完成。见 [本轮验证记录](docs/lvglplus/verification-declarative.md) 和 [能力矩阵](docs/lvglplus/roadmap.md)。
 
+## 示例工程
+
+| 示例 | 用途 |
+| --- | --- |
+| [能源控制台](examples/energy-console/README.md) | 复杂微电网仪表：平滑环形渐变、旋转涡轮、动态曲线、裁剪、精度切换及七场景三路径验证，无应用自定义 C 控件 |
+| [车辆仪表](examples/vehicle/plus.project.json) | 模拟、回放和 CAN/DBC 数据接入 |
+| [自定义控件](examples/custom/plus.project.json) | 可选的 C 控件扩展与翻译 |
+
+```sh
+node packages/cli/dist/main.js dev examples/energy-console --port 5181
+pnpm test:energy
+```
+
 ## CLI
 
 在源码工作区使用 `node packages/cli/dist/main.js`，分发包安装后命令名为 `lvglplus`。

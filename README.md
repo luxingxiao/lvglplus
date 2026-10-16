@@ -50,6 +50,19 @@ Version 0.2.0 also includes Studio drag/resize/reorder with undo/redo, visual bi
 
 Implementation and platform acceptance are tracked separately. Toolchain and core CI pass on Linux, macOS, and Windows; Linux vcan/CAN FD software integration and the DRM target build also pass. Electron distribution, the Figma host, physical DRM displays, real CAN transceivers, and MCU hardware still require acceptance testing. Cross-compilation does not establish board support. See the [latest verification evidence](docs/lvglplus/verification-declarative.md) and [capability matrix](docs/lvglplus/roadmap.md).
 
+## Examples
+
+| Example | Purpose |
+| --- | --- |
+| [Energy console](examples/energy-console/README.md) | Complex microgrid dashboard: smooth annular gradients, rotating turbine, dynamic curves, clipping, render profiles, seven-scenario native/generated-C/WASM verification; no custom C widgets |
+| [Vehicle](examples/vehicle/plus.project.json) | Instrument UI with simulation, replay and CAN/DBC integration |
+| [Custom widget](examples/custom/plus.project.json) | Optional C widget extension and translations |
+
+```sh
+node packages/cli/dist/main.js dev examples/energy-console --port 5181
+pnpm test:energy
+```
+
 ## CLI
 
 In the source workspace, use `node packages/cli/dist/main.js`. Installed distribution packages expose the command as `lvglplus`.

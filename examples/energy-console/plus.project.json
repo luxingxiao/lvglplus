@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "name": "energy_console",
+  "lvglVersion": "9.5.0",
+  "ui": "dashboard.xml",
+  "model": "model.xml",
+  "targets": [{ "name": "console", "width": 1024, "height": 600 }]
+}
