@@ -8,6 +8,9 @@ node packages/cli/dist/main.js build examples/rider --wasm
 node packages/cli/dist/main.js dev examples/rider
 # 三条路径的一致性验收：
 pnpm test:declarative
+# 公共 CLI 首页基线与快照 smoke test：
+node packages/cli/dist/main.js test examples/rider --json
+node packages/cli/dist/main.js test examples/rider --generated --json
 ```
 
 - 三种视图：基础仪表、8 个雷达目标、10 人团队和曲线路网。
