@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import React, { useState } from "react";
-import { type ProjectIR, flatten } from "@lvglplus/compiler";
+import { type ProjectIR, flatten, bindingKinds } from "@lvglplus/compiler";
 
 export function editXml(
   source: string,
@@ -89,6 +89,10 @@ export function DesignTools({
           "arc",
           "switch",
           "image",
+          "path",
+          "polygon",
+          "sector",
+          "grid",
         ].map((kind) => (
           <button
             key={kind}
@@ -131,6 +135,10 @@ export function DesignTools({
             "arc",
             "switch",
             "image",
+            "path",
+            "polygon",
+            "sector",
+            "grid",
           ].map((k) => (
             <option key={k}>{k}</option>
           ))}
@@ -207,11 +215,9 @@ export function DesignTools({
           value={binding}
           onChange={(e) => setBinding(e.target.value)}
         >
-          {["text", "value", "checked", "hidden", "color", "quality"].map(
-            (k) => (
-              <option key={k}>{k}</option>
-            ),
-          )}
+          {bindingKinds.map((k) => (
+            <option key={k}>{k}</option>
+          ))}
         </select>
         <select
           aria-label="Binding signal"

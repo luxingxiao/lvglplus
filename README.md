@@ -24,7 +24,18 @@ pnpm dev
 
 切换 **REPLAY** 查看可暂停、倍速和定位的驾驶记录。切换 **MANUAL** 后在信号输入框按 Enter 注入值。点击设备画面中的 SETTINGS 可验证 slider/switch 的双向绑定。页面中的诊断命令在没有设备处理器时报告失败，不伪造设备成功响应。
 
-## 当前能力（0.2.0）
+## 无需自定义 C 控件的复杂仪表
+
+新增通用图形、动态几何绑定、有界集合、共享数学/空间运算、原子动作、状态机、时钟、快照与声明式字体。完整语义与边界见 [声明式能力规范](docs/lvglplus/declarative.md)。
+
+```sh
+node packages/cli/dist/main.js build examples/rider --wasm
+node packages/cli/dist/main.js dev examples/rider
+```
+
+`examples/rider` 的应用源仅含 XML/Model/工程配置，没有 `native.sources`。它验证三种视图、八个雷达目标、十人快照与消息交互；不是 Rider Radar 原应用全部业务和视觉的完成版。新生成产物使用 IR v3 / SDK ABI 2，请重新编译 SDK 与字库。
+
+## 基础能力（0.2.0）
 
 - XML → 类型检查 → 公共 IR → WASM 预览包 / 生产 C 定义与 CMake。
 - 页面、组合组件、参数、slot、共享样式、Flex、8 类基础控件、多分辨率 target。

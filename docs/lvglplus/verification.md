@@ -48,3 +48,6 @@ pnpm release:pack
 - [性能文件](benchmark.json) 是 Node 托管 WASM 的软件渲染实测，不包含 Canvas 上传、物理屏刷新、GPU 或完整 CPU/峰值 RSS；不能当作设备帧率。
 
 实现范围见 [P3–P5 使用文档](p3-p5.md) 和 [能力矩阵](roadmap.md)。
+
+
+2026-10-16 通用声明式扩展的独立结果见 [新增验证记录](verification-declarative.md)，不与上述 0.2.0 历史结果混算。

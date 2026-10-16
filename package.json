@@ -27,7 +27,8 @@
     "test:extensions": "node scripts/test_extensions.mjs",
     "test:serial": "python3 tests/test_serial.py",
     "desktop": "pnpm --filter @lvglplus/desktop start",
-    "desktop:pack": "pnpm --filter @lvglplus/desktop dist"
+    "desktop:pack": "pnpm --filter @lvglplus/desktop dist",
+    "test:declarative": "node tests/declarative-parity.mjs"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

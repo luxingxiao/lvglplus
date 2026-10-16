@@ -723,6 +723,23 @@ function App() {
                 <div className="canvas-wrap">
                   <canvas
                     ref={canvas}
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      const action: Record<string, string> = {
+                        ArrowUp: "up",
+                        ArrowDown: "down",
+                        ArrowLeft: "left",
+                        ArrowRight: "right",
+                        Enter: "confirm",
+                        Escape: "back",
+                        PageDown: "next",
+                        PageUp: "previous",
+                      };
+                      if (action[e.key] && !design && !inspector) {
+                        e.preventDefault();
+                        runtime.current?.action(action[e.key]);
+                      }
+                    }}
                     onDragOver={(e) => {
                       if (design) e.preventDefault();
                     }}

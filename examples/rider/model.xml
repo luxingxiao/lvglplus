@@ -1,0 +1,55 @@
+<model version="1">
+  <signal name="running" type="boolean" initial="true"/>
+  <signal name="rate" initial="1"/>
+  <signal name="scanning" type="boolean" initial="true"/>
+  <signal name="selected" type="integer"/>
+  <signal name="role" type="enum" choices="Captain|Member|Tail"/>
+  <signal name="phase" type="integer"/>
+  <signal name="messages" type="integer"/>
+  <signal name="lastMessage" type="integer" initial="-1"/>
+  <signal name="sender" type="integer"/>
+  <signal name="greetings" type="integer"/>
+  <signal name="candidateCount" type="integer" initial="8"/>
+  <computed name="scanRunning" type="boolean" expression="running &amp;&amp; scanning"/>
+  <clock name="sim" running="running" rate="rate"/>
+  <clock name="scan" running="scanRunning" rate="rate"/>
+  <computed name="speed" expression="28 + 12*sin(sim.ms/5000)"/>
+  <computed name="battery" expression="max(0,82 - sim.ms/600000)"/>
+  <collection name="riders" capacity="8">
+    <computed name="x" expression="390 + cos(${index}*0.785398 + sim.ms/15000)*(130+${index}*3)"/>
+    <computed name="y" expression="160 + sin(${index}*0.785398 + sim.ms/15000)*(115+${index}*2)"/>
+  </collection>
+  <snapshot name="observed" collection="riders" fields="x,y" clock="scan" intervalMs="1000"/>
+  <collection name="team" capacity="10">
+    <computed name="x" expression="130 + 75*sin(${index}*0.28 + sim.ms/18000) + ${index}*2"/>
+    <computed name="y" expression="30 + ${index}*27 + 8*cos(sim.ms/7000+${index})"/>
+    <computed name="battery" expression="${index}==3 &amp;&amp; phase&gt;=3 ? 18 : 82-${index}*3"/>
+  </collection>
+  <snapshot name="peers" collection="team" fields="x,y,battery" clock="sim" intervalMs="2000"/>
+  <computed name="egoX" expression="at(peers.x,role)"/>
+  <computed name="egoY" expression="at(peers.y,role)"/>
+  <computed name="heading" expression="role*0.35"/>
+  <collection name="projected" capacity="10">
+    <computed name="x" expression="140 + (peers.${index}.x-egoX)*cos(heading) - (peers.${index}.y-egoY)*sin(heading)"/>
+    <computed name="y" expression="250 - (peers.${index}.x-egoX)*sin(heading) - (peers.${index}.y-egoY)*cos(heading)"/>
+  </collection>
+  <computed name="zoom" expression="fitScale(projected,250,290,0.5,1.2,20)"/>
+  <machine name="screen" initial="home">
+    <state name="home"><on event="next" target="radar"/><on event="openRadar" target="radar"/><on event="openTeam" target="team"/></state>
+    <state name="radar"><on event="next" target="team"/><on event="back" target="home"/><on event="openTeam" target="team"/></state>
+    <state name="team"><on event="next" target="home"/><on event="back" target="home"/><on event="openRadar" target="radar"/></state>
+  </machine>
+  <action name="pause"><set target="running" expression="!running"/></action>
+  <action name="scanToggle"><set target="scanning" expression="!scanning"/></action>
+  <action name="up"><set target="selected" expression="(selected+7)%8"/></action>
+  <action name="down"><set target="selected" expression="(selected+1)%8"/></action>
+  <action name="role"><set target="role" expression="(role+1)%3"/></action>
+  <action name="rate"><set target="rate" expression="rate==1 ? 2 : 1"/></action>
+  <action name="phase"><set target="phase" expression="(phase+1)%8"/></action>
+  <action name="confirm" guard="state.screen==1"><set target="greetings" expression="greetings+1"/></action>
+  <action name="send" parameter="integer" guard="arg()&gt;=0 &amp;&amp; arg()&lt;6">
+    <set target="messages" expression="messages+1"/>
+    <set target="lastMessage" expression="arg()"/>
+    <set target="sender" expression="role"/>
+  </action>
+</model>

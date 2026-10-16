@@ -174,7 +174,7 @@ export async function createBundle(
     header = Buffer.alloc(32);
   header.write("LVPB");
   header.writeUInt32LE(1, 4);
-  header.writeUInt32LE(1, 8);
+  header.writeUInt32LE(2, 8);
   header.writeUInt32LE(0x090500, 12);
   header.writeUInt32LE(ui.length, 16);
   header.writeUInt32LE(crc32(ui), 20);
@@ -206,7 +206,7 @@ export async function createBundle(
           bundleVersion: 1,
           xmlVersion: 1,
           irVersion: FORMAT_VERSION,
-          sdkAbi: 1,
+          sdkAbi: 2,
           lvglVersion: "9.5.0",
           project: project.ir.name,
           target: selected,
@@ -225,8 +225,9 @@ export async function verifyBundle(root: string) {
   );
   if (
     manifest.bundleVersion !== 1 ||
-    manifest.sdkAbi !== 1 ||
-    ![1, 2].includes(manifest.irVersion) ||
+    ![1, 2].includes(manifest.sdkAbi) ||
+    ![1, 2, 3].includes(manifest.irVersion) ||
+    (manifest.irVersion === 3 && manifest.sdkAbi !== 2) ||
     manifest.lvglVersion !== "9.5.0" ||
     !Array.isArray(manifest.files) ||
     manifest.files.length > 512
@@ -250,10 +251,11 @@ export async function verifyBundle(root: string) {
   if (!names.has("ui.lvpb")) throw new Error("UI payload missing");
   const binary = await readFile(await inside(root, "ui.lvpb"));
   if (
-    binary.length < 32 ||
+    binary.length < 52 ||
     binary.toString("ascii", 0, 4) !== "LVPB" ||
     binary.readUInt32LE(4) !== 1 ||
-    binary.readUInt32LE(8) !== 1 ||
+    binary.readUInt32LE(8) !== manifest.sdkAbi ||
+    binary.readUInt32LE(36) !== manifest.irVersion ||
     binary.readUInt32LE(12) !== 0x090500 ||
     binary.readUInt32LE(16) !== binary.length - 32 ||
     binary.readUInt32LE(20) !== crc32(binary.subarray(32))
@@ -305,7 +307,8 @@ export async function rollbackBundle(store: string) {
 }
 
 export function runtimeDirectory(project: LoadedProject) {
-  return project.manifest.native?.sources.length
+  return project.manifest.native?.sources.length ||
+    project.manifest.fonts?.length
     ? path.join(project.root, ".lvglplus/runtime")
     : path.join(repositoryRoot, "packages/studio/dist/runtime");
 }

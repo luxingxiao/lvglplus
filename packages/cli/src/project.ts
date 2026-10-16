@@ -109,6 +109,15 @@ export async function loadProject(folder: string) {
       ]);
     for (const source of sources) await inside(root, source);
   }
+  if (Array.isArray(manifest.fonts))
+    for (const font of manifest.fonts) {
+      if (
+        font &&
+        typeof font.file === "string" &&
+        !["builtin:montserrat", "builtin:cjk"].includes(font.file)
+      )
+        await inside(root, font.file);
+    }
   const [ui, model] = await Promise.all([
     readFile(await inside(root, manifest.ui), "utf8"),
     readFile(await inside(root, manifest.model), "utf8"),

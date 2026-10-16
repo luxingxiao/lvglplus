@@ -179,7 +179,8 @@ try {
       if (flags.wasm) {
         await run("python3", [
           path.join(repositoryRoot, "scripts/build_preview.py"),
-          ...(project.manifest.native?.sources.length
+          ...(project.manifest.native?.sources.length ||
+          project.manifest.fonts?.length
             ? ["--project", project.root]
             : []),
         ]);

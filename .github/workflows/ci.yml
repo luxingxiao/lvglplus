@@ -35,6 +35,7 @@ jobs:
       - run: python3 scripts/bootstrap.py --wasm
       - run: pnpm build:wasm && pnpm build
       - run: pnpm test && pnpm test:render && pnpm test:extensions && pnpm test:dbc && pnpm test:serial
+      - run: node packages/cli/dist/main.js build examples/rider --wasm && pnpm test:declarative
       - name: Compile Linux DRM production target
         run: |
           sudo apt-get update && sudo apt-get install -y libdrm-dev
@@ -52,4 +53,6 @@ jobs:
         if: always()
         with:
           name: render-results
-          path: build/parity
+          path: |
+            build/parity
+            examples/rider/.lvglplus/parity

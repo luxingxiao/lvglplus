@@ -12,8 +12,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--project', type=Path)
 args = parser.parse_args()
 custom = []
+fonts = []
 project = args.project.resolve() if args.project else None
 if project:
+    fonts = json.loads(subprocess.check_output(['node',str(ROOT/'scripts/prepare_fonts.mjs'),str(project)],text=True))
     manifest = json.loads((project / 'plus.project.json').read_text())
     for name in manifest.get('native', {}).get('sources', []):
         file = (project / name).resolve()
@@ -28,7 +30,7 @@ emcmake = sdk / 'upstream/emscripten/emcmake.py'
 if not emcmake.exists():
     raise SystemExit('Missing Emscripten. Run python3 scripts/bootstrap.py --wasm')
 subprocess.run(['python3', str(emcmake), 'cmake', '-S', str(ROOT), '-B', str(build),
-                '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_TESTING=OFF', '-DLVP_CUSTOM_SOURCES=' + ';'.join(custom)], env=env, check=True)
+                '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_TESTING=OFF', '-DLVP_CUSTOM_SOURCES=' + ';'.join(custom), '-DLVP_FONT_SOURCES=' + ';'.join(fonts)], env=env, check=True)
 subprocess.run(['cmake', '--build', str(build), '--target', 'lvp_preview', '-j', '8'], env=env, check=True)
 dest = project / '.lvglplus/runtime' if project else ROOT / 'packages/studio/public/runtime'
 dest.mkdir(parents=True, exist_ok=True)

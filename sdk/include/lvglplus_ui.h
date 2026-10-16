@@ -27,6 +27,8 @@ void lvp_ui_tick(lvp_ui *ui, uint64_t now_ms);
 const uint8_t *lvp_ui_pixels(const lvp_ui *ui); /* BGRA8888 framebuffer */
 uint32_t lvp_ui_width(const lvp_ui *ui);
 uint32_t lvp_ui_height(const lvp_ui *ui);
+/* Semantic input: platform keys, handlebar adapters and browser share this entry. */
+int32_t lvp_ui_action(lvp_ui *ui, const char *action);
 void lvp_ui_pointer(lvp_ui *ui, int32_t x, int32_t y, int pressed);
 lvp_result lvp_ui_navigate(lvp_ui *ui, const char *page);
 int32_t lvp_ui_hit_test(lvp_ui *ui, int32_t x, int32_t y);

@@ -2,7 +2,7 @@
 
 ## 生产构建
 
-先运行 `lvglplus generate`，再将生成的 `ui_gen.c/h` 与 `sdk/src/model.c`、`vm.c`、`ui.c` 链接到应用和 LVGL。纯生成 C 路径不需要 `package.c`。若不需要图形，也可单独使用 Model/VM/CAN 核心。
+先运行 `lvglplus generate`，再将生成的 `ui_gen.c/h` 与 `sdk/src/model.c`、`vm.c`、`ui.c`、`graphics.c` 链接到应用和 LVGL。纯生成 C 路径不需要 `package.c`。若不需要图形，也可单独使用 Model/VM/CAN 核心。
 
 ```c
 #include "lvgl.h"
@@ -60,3 +60,8 @@ HAL 可提供配对 allocate/deallocate、lock/unlock、log 和 queue_capacity�
 `cmake/arm-none-eabi.cmake` 用于 Cortex-M4 的静态库交叉编译检查，可修改 CPU/FPU 选项适配具体目标。该检查证明核心可编译，不证明任何真实屏幕、CAN 控制器、RTOS 或板卡通过验收。
 
 未指定真机板卡，因此本项目当前不发布“兼容某某 MCU 仪表”的验收声明。后续移植应提交芯片、屏幕、RTOS、工具链、RAM/Flash 和帧率实测记录。
+
+
+## 声明式应用运行时
+
+新生成文件使用 IR v3 / SDK ABI 2，需重新编译 SDK。`lvp_ui_tick` 同时驱动声明式时钟、定时器、快照与渲染；`lvp_ui_action(view,"right")` 将平台输入映射到 XML 声明的命令，`lvp_command_number(model,"send",2)` 可调用数值参数动作。协议层仅更新 Model 或发送命令，不能持有 LVGL 对象。生成字库需链接并在 UI 创建前调用生成的 `lvp_register_project_fonts`。完整语义、预算和边界见 [声明式规范](declarative.md)。

@@ -1,4 +1,4 @@
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 export const PROJECT_VERSION = 1;
 export type ValueType = "number" | "integer" | "boolean" | "string" | "enum";
 export type Quality = "valid" | "stale" | "invalid" | "disconnected";
@@ -48,7 +48,24 @@ export type Op =
   | "or"
   | "select"
   | "jump_false"
-  | "jump";
+  | "jump"
+  | "sin"
+  | "cos"
+  | "atan2"
+  | "hypot"
+  | "sqrt"
+  | "abs"
+  | "floor"
+  | "ceil"
+  | "min"
+  | "max"
+  | "clamp"
+  | "cluster_id"
+  | "cluster_size"
+  | "cluster_x"
+  | "cluster_y"
+  | "argument"
+  | "fit_scale";
 export interface Instruction {
   op: Op;
   value?: number;
@@ -63,9 +80,13 @@ export type WidgetKind =
   | "arc"
   | "switch"
   | "image"
-  | "custom";
+  | "custom"
+  | "path"
+  | "polygon"
+  | "sector"
+  | "grid";
 export interface Binding {
-  property: "text" | "value" | "checked" | "hidden" | "color" | "quality";
+  property: string;
   signal: number;
   twoWay?: boolean;
   format?: string;
@@ -96,6 +117,7 @@ export interface ProjectManifest {
   model: string;
   sources?: string;
   native?: { sources: string[] };
+  fonts?: { name: string; file: string; size: number; characters: string }[];
   lvglVersion: string;
   targets: Target[];
 }
@@ -109,6 +131,7 @@ export interface ProjectIR {
   pages: UINode[];
   initialPage: string;
   evaluationOrder: number[];
+  program?: Program;
 }
 export interface CompileInput {
   manifest: ProjectManifest;
@@ -167,4 +190,30 @@ export interface AdapterSpec {
       offsetValue?: number;
     }
   >;
+}
+
+export interface Assignment {
+  target: number;
+  code: Instruction[];
+}
+export interface Action {
+  parameter: number;
+  name: string;
+  guard: Instruction[];
+  assignments: Assignment[];
+}
+export interface Clock {
+  signal: number;
+  running: number;
+  rate: number;
+}
+export interface Timer {
+  clock: number;
+  intervalMs: number;
+  command: string;
+}
+export interface Program {
+  actions: Action[];
+  clocks: Clock[];
+  timers: Timer[];
 }
