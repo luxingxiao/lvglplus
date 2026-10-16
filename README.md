@@ -1,14 +1,16 @@
 # LVGL Plus
 
+**English** | [简体中文](README.zh-CN.md)
+
 **AI-friendly instrument development. One model, from simulation to production.**
 
-LVGL Plus 是 Apache 2.0 开源的仪表 UI 工具链。用独立 XML 描述界面和数据模型，在浏览器里用真实 LVGL 调试；把模拟数据替换为 CAN/DBC 或日志回放，无需改写页面；生产端编译生成的 C 数据定义与小型 C99 SDK。
+LVGL Plus is an Apache 2.0 open-source toolchain for instrument UIs. Describe interfaces and data models in independently designed XML, debug them with real LVGL in a browser, and switch from simulated data to CAN/DBC or recorded playback without rewriting pages. Production applications compile generated C definitions with a small C99 SDK.
 
-它以 LVGL Pro 的产品工作流为研究参考，独立设计语言与实现，不是 Pro 工程兼容工具，不依赖 Pro 软件、授权或其 XML 引擎。
+LVGL Pro's product workflow informed the research. Plus has its own language and implementation: it does not import Pro projects or depend on Pro software, licensing, or its XML engine.
 
-## 快速开始
+## Quick start
 
-需要 Node.js 24、pnpm 11.7、Python 3、CMake 3.20+、Git 和 C/C++ 编译器。构建依赖安装在项目自己的 `.deps/` 与 `.venv/`。
+Prerequisites: Node.js 24, pnpm 11.7, Python 3, CMake 3.20+, Git, and a C/C++ compiler. Build dependencies are installed in the project's `.deps/` and `.venv/` directories.
 
 ```sh
 git clone https://github.com/luxingxiao/lvglplus.git
@@ -20,38 +22,38 @@ pnpm build
 pnpm dev
 ```
 
-打开命令输出的 `http://127.0.0.1:5178`。Studio 提供本地 XML 编辑、真实 LVGL/WASM 预览、对象树、Inspector、目标切换、模型注入和模拟/回放数据源。`⌘/Ctrl+S` 保存并重新构建预览；语法错误保留最后有效画面。
+Open the URL printed by the command, normally `http://127.0.0.1:5178`. Studio provides local XML editing, real LVGL/WASM preview, an object tree, an Inspector, target selection, model injection, and simulated or recorded data sources. Press `⌘/Ctrl+S` to save and rebuild the preview; syntax errors preserve the last valid view.
 
-切换 **REPLAY** 查看可暂停、倍速和定位的驾驶记录。切换 **MANUAL** 后在信号输入框按 Enter 注入值。点击设备画面中的 SETTINGS 可验证 slider/switch 的双向绑定。页面中的诊断命令在没有设备处理器时报告失败，不伪造设备成功响应。
+Select **REPLAY** to pause, change speed, or seek through a driving recording. Select **MANUAL**, enter a signal value, and press Enter to inject it. Click SETTINGS on the device display to try slider/switch two-way binding. Diagnostic commands report failure when no device handler exists; they do not simulate successful device responses.
 
-## 无需自定义 C 控件的复杂仪表
+## Complex instruments without custom C widgets
 
-新增通用图形、动态几何绑定、有界集合、共享数学/空间运算、原子动作、状态机、时钟、快照与声明式字体。完整语义与边界见 [声明式能力规范](docs/lvglplus/declarative.md)。
+General-purpose graphics, dynamic geometry bindings, bounded collections, shared mathematical and spatial operations, atomic actions, state machines, clocks, snapshots, and declarative fonts are available. See the [declarative capability specification](docs/lvglplus/declarative.md) for semantics and limits.
 
 ```sh
 node packages/cli/dist/main.js build examples/rider --wasm
 node packages/cli/dist/main.js dev examples/rider
 ```
 
-`examples/rider` 的应用源仅含 XML/Model/工程配置，没有 `native.sources`。它验证三种视图、八个雷达目标、十人快照与消息交互；不是 Rider Radar 原应用全部业务和视觉的完成版。新生成产物使用 IR v3 / SDK ABI 2，请重新编译 SDK 与字库。
+The application sources in `examples/rider` contain only XML, models, and project configuration, with no `native.sources`. The example demonstrates three views, eight radar targets, ten-person snapshots, and message interactions. It is not a complete reproduction of the original Rider Radar application's behavior or visual design. Newly generated artifacts use IR v3 / SDK ABI 2; rebuild the SDK and fonts when updating.
 
-## 基础能力（0.2.0）
+## Capabilities (0.2.0)
 
-- XML → 类型检查 → 公共 IR → WASM 预览包 / 生产 C 定义与 CMake。
-- 页面、组合组件、参数、slot、共享样式、Flex、8 类基础控件、多分辨率 target。
-- C99 类型化模型、派生表达式 VM、单向/双向绑定、命令状态、批量更新及生命周期清理。
-- 信号时间戳、单位、有效性、超时、断线，以及带溢出统计的有界输入队列。
-- 模拟、确定性回放、Linux SocketCAN/CAN FD、构建期 cantools DBC → C codec。
-- 真实 LVGL 无窗口原生 runner、PNG 截图、模型断言、显式视觉基线及解释/生成 C 一致性测试。
-- 无账号、无付费服务的本地 Web Studio；不执行项目提供的构建脚本。
+- XML → type checking → public IR → WASM preview packages / production C definitions and CMake files.
+- Pages, composed components, parameters, slots, shared styles, Flex layouts, eight basic widget types, and targets with different resolutions.
+- C99 typed models, a shared expression VM, one-way/two-way bindings, command status, batched updates, and lifecycle cleanup.
+- Signal timestamps, units, quality, timeouts, disconnections, and bounded input queues with overflow counters.
+- Simulation, deterministic replay, Linux SocketCAN/CAN FD, and build-time cantools DBC-to-C codec generation.
+- A real LVGL headless native runner, PNG screenshots, model assertions, explicit visual baselines, and interpreter/generated-C consistency checks.
+- A local Web Studio with no account or paid service requirement; project-supplied build scripts are not executed.
 
-0.2.0 增加了 Studio 拖放/缩放/重排与撤销重做、可视化绑定/事件/动画、翻译、字库、自定义 C 控件、资源管理/预算、静态 Viewer、独立 Figma 导入导出、动态 UI 包/A-B 回滚、网络/串口/MQTT/Modbus 插件、录制、MCP、迁移和桌面封装。详见 [P3–P5 使用文档](docs/lvglplus/p3-p5.md)。
+Version 0.2.0 also includes Studio drag/resize/reorder with undo/redo, visual binding/event/animation editing, translations, fonts, custom C widgets, resource management and budgets, a static Viewer, independent Figma import/export, dynamic UI packages with A/B rollback, network/serial/MQTT/Modbus plugins, recording, MCP, migrations, and desktop packaging source. See the [P3–P5 guide](docs/lvglplus/p3-p5.md).
 
-源码实现与平台验收分别追踪：Electron 下载被本机网络阻断，Figma 宿主、真实 DRM 和 MCU、Windows 尚未验收；复杂设计效果和更多控件继续扩展，见 [能力矩阵](docs/lvglplus/roadmap.md)。
+Implementation and platform acceptance are tracked separately. Toolchain and core CI pass on Linux, macOS, and Windows; Linux vcan/CAN FD software integration and the DRM target build also pass. Electron distribution, the Figma host, physical DRM displays, real CAN transceivers, and MCU hardware still require acceptance testing. Cross-compilation does not establish board support. See the [latest verification evidence](docs/lvglplus/verification-declarative.md) and [capability matrix](docs/lvglplus/roadmap.md).
 
 ## CLI
 
-在源码工作区使用 `node packages/cli/dist/main.js`，分发包安装后命令名为 `lvglplus`。
+In the source workspace, use `node packages/cli/dist/main.js`. Installed distribution packages expose the command as `lvglplus`.
 
 ```sh
 node packages/cli/dist/main.js doctor --json
@@ -63,7 +65,7 @@ node packages/cli/dist/main.js screenshot examples/vehicle --out build/cluster.p
 node packages/cli/dist/main.js test examples/vehicle --json
 ```
 
-`generate` 输出专用 `.lvglplus/generated/`，每次整体替换；**用户逻辑放在该目录外**。使用 `--generated` 让 runner 链接静态生成 C，普通模式加载独立二进制 UI 包；两者共用相同渲染适配与 MVVM 核心。生产 C 路径不需要 XML/包解析器、Node.js 或浏览器。
+`generate` replaces the dedicated `.lvglplus/generated/` directory as a whole. **Keep user application code outside this directory.** Pass `--generated` to link static generated C into the runner; the default mode loads an independent binary UI package. Both modes share the rendering adapter and MVVM core. The production C path requires no XML/package parser, Node.js, or browser.
 
 ```sh
 node packages/cli/dist/main.js viewer examples/vehicle --out build/review
@@ -73,39 +75,43 @@ node packages/cli/dist/main.js mcp examples/vehicle
 node packages/cli/dist/main.js build examples/custom --wasm
 ```
 
-Design 模式可拖入控件、移动/缩放和配置绑定；资源面板管理 PNG。翻译和动画以 XML 为源，自定义工程示例位于 `examples/custom`。静态 Viewer 使用普通 HTTP 托管；Figma 导入入口与协议配置见 `tools/figma`、`examples/protocols`。
+Design mode supports adding, moving, resizing, and binding widgets; the resource panel manages PNG files. XML remains the source for translations and animations. See `examples/custom` for custom widgets, `tools/figma` for Figma integration, and `examples/protocols` for protocol configuration. Host the static Viewer with an ordinary HTTP server.
 
-## 数据与嵌入式
+## Data and embedded integration
 
 ```text
 Transport → Codec → Mapping → Model → ViewModel → Binding → LVGL
                                          ↑ Commands ↓
 ```
 
-Linux 真数据：先建立并配置 `can0` 或 `vcan0`，执行 `lvglplus build <project> --gateway`，再在 Studio 选择 CAN / FD。示例网关只接收数据，不发送车辆控制帧。macOS/Windows 使用模拟、回放或连接 Linux 网关的后续网络适配；不能把 SocketCAN 当作跨平台本地驱动。
+For live Linux data, configure `can0` or `vcan0`, run `lvglplus build <project> --gateway`, and select CAN / FD in Studio. The example gateway only receives data; it does not transmit vehicle control frames. SocketCAN is a Linux-specific local driver. On macOS and Windows, use simulation, replay, or a separately configured network bridge to a Linux gateway.
 
-设备集成从 [C SDK 与移植](docs/lvglplus/embedding.md) 开始。`lvp_ui_attach()` 将生成界面挂载到设备已经初始化的 LVGL display；调度和显示/触摸驱动由 BSP 提供。兼容记录明确区分源码可编译、模拟通过和真实设备验证。
+Start device integration with the [C SDK and porting guide](docs/lvglplus/embedding.md). `lvp_ui_attach()` attaches a generated UI to an LVGL display already initialized by the device. The BSP supplies scheduling and display/touch drivers. Compatibility records distinguish successful compilation, simulation, and real-device verification.
 
-## 验证
+## Verification
 
 ```sh
-pnpm test                         # 编译器、回放、服务边界及保存失败行为
-pnpm test:c                       # C 模型/VM/队列/命令/CAN 核心
-node tests/render-parity.mjs       # 需要 LVGL 和 WASM：原生/浏览器核心/生成 C 精确对比
+pnpm test                         # Compiler, replay, service boundaries, save failures
+pnpm test:c                       # C model, VM, queue, commands, CAN core
+node tests/render-parity.mjs       # Requires LVGL/WASM: native, WASM, generated-C parity
 ```
 
-Linux 的真实 `vcan` 集成测试为 `tests/test_socketcan.py`。它与可移植 CAN 单元测试分开，不以 mock 替代内核接口验证。测试记录和限制见 [验证记录](docs/lvglplus/verification.md)。
+The Linux kernel-backed vcan integration test is `tests/test_socketcan.py`. It is separate from portable CAN unit tests and does not substitute mocks for kernel interface verification. See the [verification records](docs/lvglplus/verification.md) for results and limits, and the [declarative verification record](docs/lvglplus/verification-declarative.md) for Rider-specific consistency tests and cross-platform CI evidence.
 
-## 文档与许可证
+## Documentation and license
 
-| 文档 | 内容 |
+The detailed technical documents currently use Simplified Chinese.
+
+| Document | Contents |
 | --- | --- |
-| [架构](docs/lvglplus/architecture.md) | 数据流、模块职责与技术决策 |
-| [语言与 IR](docs/lvglplus/language.md) | 项目格式、XML、字节码与二进制包 |
-| [数据接入](docs/lvglplus/data.md) | 模拟、回放、DBC 与 SocketCAN |
-| [嵌入式移植](docs/lvglplus/embedding.md) | C API、线程和生命周期契约 |
-| [P3–P5 使用](docs/lvglplus/p3-p5.md) | 设计工具、动画、插件、包、MCP 与发行 |
-| [能力与路线图](docs/lvglplus/roadmap.md) | P0–P5 的实际状态和边界 |
-| [LVGL Pro 调研](docs/lvglpro/README.md) | 前期研究资料，不是 Plus 的兼容规范 |
+| [Architecture](docs/lvglplus/architecture.md) | Data flow, module responsibilities, technical decisions |
+| [Declarative capabilities](docs/lvglplus/declarative.md) | Graphics, collections, actions, state machines, clocks, fonts |
+| [Language and IR](docs/lvglplus/language.md) | Project format, XML, bytecode, binary packages |
+| [Data integration](docs/lvglplus/data.md) | Simulation, replay, DBC, SocketCAN |
+| [Embedded porting](docs/lvglplus/embedding.md) | C APIs, threading, lifecycle contracts |
+| [P3–P5 guide](docs/lvglplus/p3-p5.md) | Design tools, animation, plugins, packages, MCP, distribution |
+| [Capabilities and roadmap](docs/lvglplus/roadmap.md) | Actual P0–P5 status and boundaries |
+| [Verification evidence](docs/lvglplus/verification-declarative.md) | Native, WASM, cross-platform CI, cross-compilation |
+| [LVGL Pro research](docs/lvglpro/README.md) | Historical research, not a Plus compatibility specification |
 
-自有代码：[Apache License 2.0](LICENSE)。第三方依赖保持各自许可证，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。欢迎通过 [贡献指南](CONTRIBUTING.md) 提交功能、测试与设备移植。
+Project-authored code is licensed under the [Apache License 2.0](LICENSE). Third-party dependencies retain their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Contributions to features, tests, and device ports are welcome through the [contribution guide](CONTRIBUTING.md).
