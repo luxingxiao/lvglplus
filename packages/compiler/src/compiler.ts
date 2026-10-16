@@ -77,6 +77,12 @@ export const properties = new Set([
   "gridX",
   "gridY",
   "fade",
+  "tailOpacity",
+  "headOpacity",
+  "radialOpacity",
+  "fadePower",
+  "innerRadius",
+  "rasterSize",
 ]);
 const types = new Set(["number", "integer", "boolean", "string", "enum"]);
 const identifier = /^[A-Za-z_][A-Za-z0-9_.]*$/;
@@ -575,6 +581,23 @@ export function compile(input: CompileInput): CompileResult {
           (["gridX", "gridY"].includes(key) && Number(props[key]) < 2))
       )
         error(node, "GEOMETRY", `Invalid ${key}`);
+    for (const [key, min, max] of [
+      ["tailOpacity", 0, 255],
+      ["headOpacity", 0, 255],
+      ["radialOpacity", 0, 255],
+      ["fadePower", 1, 8],
+      ["innerRadius", 0, 99],
+      ["rasterSize", 32, 512],
+    ] as const) {
+      if (
+        props[key] !== undefined &&
+        (node.tag !== "sector" ||
+          !/^\d+$/.test(props[key]) ||
+          Number(props[key]) < min ||
+          Number(props[key]) > max)
+      )
+        error(node, "GEOMETRY", `${key} is a sector integer in ${min}..${max}`);
+    }
     if (props.clip !== undefined && !["true", "false"].includes(props.clip))
       error(node, "GEOMETRY", "clip must be boolean");
     if (props.fade !== undefined && !["true", "false"].includes(props.fade))

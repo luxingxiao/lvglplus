@@ -31,11 +31,10 @@ Select **REPLAY** to pause, change speed, or seek through a driving recording. S
 General-purpose graphics, dynamic geometry bindings, bounded collections, shared mathematical and spatial operations, atomic actions, state machines, clocks, snapshots, and declarative fonts are available. See the [declarative capability specification](docs/lvglplus/declarative.md) for semantics and limits.
 
 ```sh
-node packages/cli/dist/main.js build examples/rider --wasm
-node packages/cli/dist/main.js dev examples/rider
+pnpm test:declarative
 ```
 
-The application sources in `examples/rider` contain only XML, models, and project configuration, with no `native.sources`. The example demonstrates three views, eight radar targets, ten-person snapshots, and message interactions. It is not a complete reproduction of the original Rider Radar application's behavior or visual design. Newly generated artifacts use IR v3 / SDK ABI 2; rebuild the SDK and fonts when updating.
+Public rendering tests use the independently authored geometry fixture in `tests/fixtures/graphics`. Application-specific validation sources are kept locally outside version control and are not distributed. Generated artifacts use IR v3 / SDK ABI 2; rebuild the SDK when updating.
 
 ## Capabilities (0.2.0)
 
@@ -96,7 +95,7 @@ pnpm test:c                       # C model, VM, queue, commands, CAN core
 node tests/render-parity.mjs       # Requires LVGL/WASM: native, WASM, generated-C parity
 ```
 
-The Linux kernel-backed vcan integration test is `tests/test_socketcan.py`. It is separate from portable CAN unit tests and does not substitute mocks for kernel interface verification. See the [verification records](docs/lvglplus/verification.md) for results and limits, and the [declarative verification record](docs/lvglplus/verification-declarative.md) for Rider-specific consistency tests and cross-platform CI evidence.
+The Linux kernel-backed vcan integration test is `tests/test_socketcan.py`. It is separate from portable CAN unit tests and does not substitute mocks for kernel interface verification. See the [verification records](docs/lvglplus/verification.md) for results and limits, and the [declarative verification record](docs/lvglplus/verification-declarative.md) for graphics consistency tests and cross-platform CI evidence.
 
 ## Documentation and license
 

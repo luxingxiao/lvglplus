@@ -1,0 +1,5 @@
+<model version="1">
+  <clock name="motion"/>
+  <signal name="angle" type="number" initial="90"/>
+  <action name="reverse"><set target="angle" expression="-90"/></action>
+</model>

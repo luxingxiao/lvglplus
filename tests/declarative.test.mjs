@@ -114,3 +114,28 @@ test("shared C runtime: scheduled snapshots, transitive clusters, fit scale, typ
   await execute([0, 350]);
   await execute([0, 100, 200, 300, 350]);
 });
+
+test("sector coverage settings validate types, ranges and widget ownership", () => {
+  const sector =
+    '<dashboard version="1"><page id="home"><sector id="gradient" fade="true" tailOpacity="0" headOpacity="240" radialOpacity="80" fadePower="3" innerRadius="20" rasterSize="128"/></page></dashboard>';
+  assert.deepEqual(probe(model, sector).diagnostics, []);
+  for (const [key, value] of [
+    ["tailOpacity", "256"],
+    ["headOpacity", "-1"],
+    ["radialOpacity", "nan"],
+    ["fadePower", "0"],
+    ["innerRadius", "100"],
+    ["rasterSize", "1024"],
+  ]) {
+    const bad = sector.replace(
+      new RegExp(key + '="[^"]+"'),
+      key + '="' + value + '"',
+    );
+    assert(probe(model, bad).diagnostics.some((d) => d.code === "GEOMETRY"));
+  }
+  assert(
+    probe(model, sector.replace("<sector ", "<panel ")).diagnostics.some(
+      (d) => d.code === "GEOMETRY",
+    ),
+  );
+});

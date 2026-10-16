@@ -31,11 +31,10 @@ pnpm dev
 新增通用图形、动态几何绑定、有界集合、共享数学/空间运算、原子动作、状态机、时钟、快照与声明式字体。完整语义与边界见 [声明式能力规范](docs/lvglplus/declarative.md)。
 
 ```sh
-node packages/cli/dist/main.js build examples/rider --wasm
-node packages/cli/dist/main.js dev examples/rider
+pnpm test:declarative
 ```
 
-`examples/rider` 的应用源仅含 XML/Model/工程配置，没有 `native.sources`。它验证三种视图、八个雷达目标、十人快照与消息交互；不是 Rider Radar 原应用全部业务和视觉的完成版。新生成产物使用 IR v3 / SDK ABI 2，请重新编译 SDK 与字库。
+公开渲染测试使用独立编写的 `tests/fixtures/graphics` 几何夹具。应用级验证代码仅保留在本地忽略目录，不随仓库分发。生成产物使用 IR v3 / SDK ABI 2，更新后请重新构建 SDK。
 
 ## 基础能力（0.2.0）
 

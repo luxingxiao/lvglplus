@@ -1,0 +1,14 @@
+<dashboard version="1">
+  <page id="home" bg="#000000">
+    <sector id="angular" x="0" y="0" width="200" height="200" bg="#ffffff" fade="true" startAngle="0" endAngle="90"/>
+    <sector id="annulus" x="200" y="0" width="160" height="160" bg="#00ffff" fade="true" fadePower="2" tailOpacity="8" headOpacity="230" radialOpacity="40" innerRadius="20" startAngle="40" endAngle="-260" pivotX="80" pivotY="80">
+      <bind property="rotation" expression="motion.ms*0.06"/>
+    </sector>
+    <sector id="scaled" x="360" y="10" width="100" height="180" bg="#ffcc66" rasterSize="32" opacity="180" startAngle="0" endAngle="90">
+      <bind property="endAngle" signal="angle"/>
+    </sector>
+    <sector id="circle" x="205" y="170" width="50" height="50" bg="#aabbcc" startAngle="-180" endAngle="180" innerRadius="30"/>
+    <sector id="wrapped" x="325" y="180" width="40" height="40" bg="#ff0000" startAngle="330" endAngle="390"/>
+    <sector id="empty" x="270" y="170" width="50" height="50" startAngle="20" endAngle="20"/>
+  </page>
+</dashboard>

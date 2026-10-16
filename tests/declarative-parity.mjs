@@ -10,7 +10,9 @@ import {
 } from "../packages/cli/dist/project.js";
 import { buildNative, run, ppmToPng } from "../packages/cli/dist/build.js";
 import { encodePackage, flatten } from "../packages/compiler/dist/index.js";
-const project = await loadProject(path.join(repositoryRoot, "examples/rider"));
+const project = await loadProject(
+  path.join(repositoryRoot, "tests/fixtures/graphics"),
+);
 const out = path.join(project.root, ".lvglplus/parity");
 await mkdir(out, { recursive: true });
 await generateProject(project);
@@ -25,68 +27,33 @@ const interpreted = await buildNative(project),
   generated = await buildNative(project, true);
 const create = (
   await import(
-    pathToFileURL(path.join(project.root, ".lvglplus/runtime/lvp.js")).href
+    pathToFileURL(
+      path.join(repositoryRoot, "packages/studio/public/runtime/lvp.js"),
+    ).href
   )
 ).default;
 const scenarios = [
+  { name: "initial", steps: [["tick", 0]] },
   {
-    name: "home",
+    name: "rotated",
     steps: [
-      ["tick", 1000],
-      ["tick", 2000],
-      ["tick", 3000],
+      ["tick", 0],
+      ["tick", 750],
     ],
   },
   {
-    name: "radar",
+    name: "reversed",
     steps: [
-      ["command", "openRadar"],
-      ["tick", 1000],
-      ["input", "down"],
-      ["tick", 2000],
-      ["input", "confirm"],
-      ["tick", 3000],
-    ],
-  },
-  {
-    name: "team",
-    steps: [
-      ["command", "openTeam"],
-      ["tick", 1000],
-      ["tick", 2000],
-      ["command", "phase"],
-      ["command", "phase"],
-      ["command", "phase"],
-      ["tick", 3000],
-    ],
-  },
-  {
-    name: "messages",
-    steps: [
-      ["command", "openTeam"],
-      ...Array.from({ length: 3 }, () => [
-        ...Array.from({ length: 6 }, (_, i) => ["number", "send", i]),
-        ["command", "role"],
-      ]).flat(),
-      ["tick", 2000],
-    ],
-  },
-  {
-    name: "pause-rate",
-    steps: [
-      ["tick", 1000],
-      ["command", "pause"],
-      ["tick", 2000],
-      ["command", "pause"],
-      ["command", "rate"],
-      ["tick", 2500],
+      ["tick", 0],
+      ["command", "reverse"],
+      ["tick", 1500],
     ],
   },
 ];
 for (const scenario of scenarios) {
   const m = await create({
     wasmBinary: await readFile(
-      path.join(project.root, ".lvglplus/runtime/lvp.wasm"),
+      path.join(repositoryRoot, "packages/studio/public/runtime/lvp.wasm"),
     ),
   });
   const f = (n, r, a = []) => m.cwrap("lvp_preview_" + n, r, a);
@@ -117,27 +84,58 @@ for (const scenario of scenarios) {
     }
   }
   tick(now);
-  if (scenario.name === "messages") {
-    assert.equal(
-      get(project.ir.signals.findIndex((s) => s.name === "messages")),
-      18,
-    );
-    assert.equal(
-      get(project.ir.signals.findIndex((s) => s.name === "sender")),
-      2,
-    );
-  }
-  if (scenario.name === "pause-rate")
-    assert.equal(
-      get(project.ir.signals.findIndex((s) => s.name === "sim.ms")),
-      2000,
-    );
   const pixels = f("pixels", "number")(),
-    rgb = Buffer.alloc(840 * 480 * 3);
+    rgb = Buffer.alloc(480 * 240 * 3);
   for (let i = 0, j = 0; i < rgb.length; i += 3, j += 4) {
     rgb[i] = m.HEAPU8[pixels + j + 2];
     rgb[i + 1] = m.HEAPU8[pixels + j + 1];
     rgb[i + 2] = m.HEAPU8[pixels + j];
+  }
+  if (scenario.name === "initial") {
+    const sample = (x, y) => rgb[(y * 480 + x) * 3];
+    assert.equal(
+      sample(141, 141),
+      128,
+      "diagonal half-alpha rounds identically across libm implementations",
+    );
+    const green = (x, y) => rgb[(y * 480 + x) * 3 + 1];
+    assert.equal(green(280, 80), 0, "inner-radius hole stays transparent");
+    assert(
+      green(303, 61) > green(334, 35),
+      "radial opacity attenuates toward rim",
+    );
+    const values = [10, 20, 30, 40, 50, 60, 70, 80].map((angle) => {
+      const r = (angle * Math.PI) / 180;
+      return sample(
+        Math.floor(100 + 75 * Math.cos(r)),
+        Math.floor(100 + 75 * Math.sin(r)),
+      );
+    });
+    for (let i = 1; i < values.length; i++)
+      assert(values[i] > values[i - 1], "angular fade monotonic");
+    const shades = new Set();
+    for (let a = 5; a < 85; a++) {
+      const r = (a * Math.PI) / 180;
+      shades.add(
+        sample(
+          Math.floor(100 + 75 * Math.cos(r)),
+          Math.floor(100 + 75 * Math.sin(r)),
+        ),
+      );
+    }
+    assert(
+      shades.size > 50,
+      "continuous coverage must exceed the old nine-step fade",
+    );
+    assert.equal(sample(20, 20), 0, "outside sector stays transparent");
+    assert(sample(360, 200) > 240, "sector crosses zero degrees");
+    assert.equal(
+      sample(330, 200),
+      0,
+      "wrapped sector excludes opposite direction",
+    );
+    assert.equal(sample(230, 195), 0, "annular center stays transparent");
+    assert.equal(sample(290, 195), 0, "zero-span sector stays transparent");
   }
   const steps = path.join(out, scenario.name + ".steps");
   await writeFile(
@@ -170,25 +168,6 @@ for (const scenario of scenarios) {
     );
     const png = ppmToPng(ppm);
     await writeFile(file.replace(".ppm", ".png"), png);
-    if (
-      label === "native" &&
-      ["home", "radar", "team"].includes(scenario.name)
-    ) {
-      const baseline = path.join(
-        project.root,
-        "baselines",
-        scenario.name + ".png",
-      );
-      if (process.argv.includes("--update-baselines")) {
-        await mkdir(path.dirname(baseline), { recursive: true });
-        await writeFile(baseline, png);
-      } else
-        assert.deepEqual(
-          await readFile(baseline),
-          png,
-          "Reviewed visual baseline: " + scenario.name,
-        );
-    }
     for (const line of stdout.trim().split("\n")) {
       const [name, value, q] = line.split("\t"),
         index = project.ir.signals.findIndex((s) => s.name === name);

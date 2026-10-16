@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "name": "graphics_contract",
+  "lvglVersion": "9.5.0",
+  "ui": "dashboard.xml",
+  "model": "model.xml",
+  "targets": [{ "name": "test", "width": 480, "height": 240 }]
+}
