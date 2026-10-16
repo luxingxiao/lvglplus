@@ -17,3 +17,6 @@ __pycache__/
 *.pyc
 !docs/**/images/*.png
 !examples/**/baselines/*.png
+
+# Private application validation; never publish application sources or assets.
+.local-validation/

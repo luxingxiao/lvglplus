@@ -1,6 +1,6 @@
 # 通用声明式仪表能力（IR v3 / SDK ABI 2）
 
-本轮将复杂仪表所需能力加入 Plus 自有语言和公共 C 核心。应用可以组合 XML、类型化 Model 和数据配置，无需手写自定义 C 控件。`examples/rider` 是独立编写的验收示例，不复制 Rider Radar 的源码、字体或截图，不宣称已完成该应用的全部视觉和业务复刻。
+本轮将复杂仪表所需能力加入 Plus 自有语言和公共 C 核心。应用可以组合 XML、类型化 Model 和数据配置，无需手写自定义 C 控件。公开渲染验收使用独立几何夹具 `tests/fixtures/graphics`；应用级验证源码保存在本地忽略目录，不随仓库发布。
 
 ## 开始
 
@@ -9,11 +9,10 @@ pnpm install --frozen-lockfile
 python3 scripts/bootstrap.py --wasm
 pnpm build:wasm
 pnpm build
-node packages/cli/dist/main.js build examples/rider --wasm
-node packages/cli/dist/main.js dev examples/rider
+node packages/cli/dist/main.js dev tests/fixtures/graphics
 ```
 
-Studio 聚焦画布后，方向键、Enter、Esc 可发送语义输入。示例底部按钮可以切换页面、暂停/继续、切换倍速/角色和剧情编号；六个消息按钮可用于联调。真实 LVGL 画面来自 C/WASM，不用浏览器重新实现绘制或业务求值。
+Studio 聚焦画布后可向工程声明的语义输入发送事件。真实 LVGL 画面来自 C/WASM，不用浏览器重新实现绘制或业务求值。
 
 生产路径仍为生成 C 数据定义 + Plus C SDK + LVGL。应用新增的 XML/Model 不引入设备 XML 解析器。生成字库也是工具产物，不要求应用作者编写 C 注册代码。
 
@@ -163,8 +162,33 @@ pnpm test:c
 pnpm build:wasm
 pnpm test:render
 pnpm test:extensions
-node packages/cli/dist/main.js build examples/rider --wasm
 pnpm test:declarative
 ```
 
-Rider 验收脚本比较 home/radar/team/messages/pause-rate 五类场景的 Model、质量、对象边界和完整像素，覆盖 native 包解释、生成 C 与 WASM。字体、渲染器、时钟和场景步骤固定；原始证据写入 ignored `.lvglplus/parity`。原应用的旧截图和测试记录不作为这个示例的验收证据。
+公开验收脚本比较静止、旋转和反向角度三类几何场景的 Model、质量、对象边界和完整像素，覆盖 native 包解释、生成 C 与 WASM，并验证透明区域和渐变色阶。原始证据写入 `tests/fixtures/graphics/.lvglplus/parity`（Git 忽略）。本地应用验证不再作为公共 CI 的依赖。
+
+## 平滑扇区渲染
+
+`sector` 使用逐像素 A8 覆盖图，替换固定 5° 三角形色阶。圆弧和角边界使用 2×2 子像素覆盖采样；角度正负、跨 0°、完整圆及零跨度均有定义。正跨度顺时针，负跨度逆时针，透明度从 start 向 end 增加。`fade="false"` 使用恒定 headOpacity。
+
+| 属性 | 范围 / 默认 | 作用 |
+| --- | --- | --- |
+| tailOpacity | 0–255 / 0 | 拖尾起点透明度 |
+| headOpacity | 0–255 / 255 | 前沿透明度 |
+| fadePower | 1–8 / 1 | 角向衰减指数，越大越集中于前沿 |
+| radialOpacity | 0–255 / 255 | 外缘相对于内缘的透明度，径向线性插值 |
+| innerRadius | 0–99 / 0 | 内圈半径百分比，可绘制环形扇区 |
+| rasterSize | 32–512 / 512 | 缓存宽高各自的上限，超出时缩放显示 |
+
+以上属性为静态 sector 属性；startAngle/endAngle、对象 rotation/opacity/bg 仍可绑定。缓存不含颜色；颜色、位置、透明度和旋转变化复用覆盖图。角度或覆盖参数变化时重建，尺寸变化只在实际缓存尺寸变化时重建。每个扇区稳态占用 `min(width,rasterSize) × min(height,rasterSize)` 字节覆盖内存；事务重建短暂同时保留新旧两张图，另有 LVGL 图层/变换开销。较低 rasterSize 减少内存但降低精度，MCU 必须按实机预算设置。分配失败记录 LVGL 警告并跳过该扇区绘制，后续绘制会重试；不偷偷降级为分块效果。
+
+```xml
+<sector id="sweep" width="320" height="320" bg="#30e8ad"
+        startAngle="0" endAngle="65" fade="true" fadePower="2"
+        tailOpacity="0" headOpacity="255" radialOpacity="100"
+        innerRadius="4" rasterSize="320" pivotX="160" pivotY="160">
+  <bind property="rotation" expression="clock.ms*0.06"/>
+</sector>
+```
+
+示意中的 clock 必须在 Model 中声明。扫描命中、目标回波寿命属于应用 Model 逻辑，本次没有引入专用雷达业务控件或声称已实现回波模型。完整物理发光/模糊、任意遮罩和真实设备帧率仍不在本次验收范围。

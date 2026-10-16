@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "graphics.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +10,10 @@ typedef struct {
     double x[64], y[64], start, end;
     lv_color_t color, fill;
     int width, dash, gap, grid_x, grid_y, smooth, fade;
+    int tail_opacity, head_opacity, radial_opacity, fade_power, inner_radius, raster_size;
+    int dirty;
+    uint8_t *alpha;
+    lv_image_dsc_t image;
 } graphic;
 static lv_point_precise_t point(double x, double y) {
     lv_point_precise_t p = {(int32_t)lround(x), (int32_t)lround(y)};
@@ -20,9 +25,74 @@ static void segment(lv_layer_t *layer, lv_draw_line_dsc_t *d, double ax, double 
     if (d->p1.x != d->p2.x || d->p1.y != d->p2.y)
         lv_draw_line(layer, d);
 }
+/* A8 coverage is cached in object space: rotations/recolors do not rasterize again.
+ * At most raster_size^2 bytes (default/max 512^2) per sector. */
+static double coverage(const graphic *g, double x, double y) {
+    double r = hypot(x, y), inner = g->inner_radius / 100.0;
+    double span = fmax(-360, fmin(360, g->end - g->start));
+    if (r > 1 || r < inner || fabs(span) < 0.000001)
+        return 0;
+    double angle = atan2(y, x) * 180 / PI;
+    double delta = fmod((span < 0 ? g->start - angle : angle - g->start), 360);
+    if (delta < 0)
+        delta += 360;
+    if (delta > fabs(span))
+        return 0;
+    double t = delta / fabs(span), ramp = 1;
+    if (g->fade) {
+        ramp = t;
+        for (int i = 1; i < g->fade_power; i++)
+            ramp *= t;
+    }
+    double alpha = g->fade ? g->tail_opacity + (g->head_opacity - g->tail_opacity) * ramp
+                           : g->head_opacity;
+    double radial = (r - inner) / (1 - inner);
+    return alpha * (1 - radial * (1 - g->radial_opacity / 255.0));
+}
+static int sector_cache(graphic *g, int width, int height) {
+    if (width <= 0 || height <= 0)
+        return 0;
+    int w = width < g->raster_size ? width : g->raster_size;
+    int h = height < g->raster_size ? height : g->raster_size;
+    if (!g->dirty && g->image.header.w == (unsigned)w && g->image.header.h == (unsigned)h)
+        return 1;
+    uint8_t *pixels = malloc((size_t)w * h);
+    if (!pixels) {
+        LV_LOG_WARN("Plus sector coverage allocation failed");
+        return 0;
+    }
+    /* Four subpixel samples anti-alias both circular and angular boundaries. */
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++) {
+            double alpha = 0;
+            for (int sy = 0; sy < 2; sy++)
+                for (int sx = 0; sx < 2; sx++)
+                    alpha += coverage(g, 2 * (x + .25 + .5 * sx) / w - 1,
+                                         2 * (y + .25 + .5 * sy) / h - 1);
+            /* libm atan2 can straddle an exact half-alpha at diagonal pixels.
+             * Snap to 1e-7 alpha units before half-up quantization for C/WASM parity. */
+            double averaged = floor((alpha / 4) * 1e7 + .5) / 1e7;
+            pixels[y * w + x] = (uint8_t)floor(averaged + .5);
+        }
+    lv_image_cache_drop(&g->image);
+    free(g->alpha);
+    g->alpha = pixels;
+    memset(&g->image, 0, sizeof(g->image));
+    g->image.header.magic = LV_IMAGE_HEADER_MAGIC;
+    g->image.header.cf = LV_COLOR_FORMAT_A8;
+    g->image.header.w = w;
+    g->image.header.h = h;
+    g->image.header.stride = w;
+    g->image.data_size = (uint32_t)w * h;
+    g->image.data = pixels;
+    g->dirty = 0;
+    return 1;
+}
 static void render(lv_event_t *event) {
     graphic *g = lv_event_get_user_data(event);
     if (lv_event_get_code(event) == LV_EVENT_DELETE) {
+        lv_image_cache_drop(&g->image);
+        free(g->alpha);
         free(g);
         return;
     }
@@ -44,19 +114,18 @@ static void render(lv_event_t *event) {
         for (int j = 0; j <= h && j < 4096; j += g->grid_y)
             segment(layer, &line, x, y + j, x + w - 1, y + j);
     } else if (g->kind == 11) {
-        double span = fmax(-360, fmin(360, g->end - g->start));
-        int steps = (int)ceil(fabs(span) / 5);
-        lv_draw_triangle_dsc_t d;
-        lv_draw_triangle_dsc_init(&d);
-        d.color = g->fill;
-        for (int i = 0; i < steps; i++) {
-            double t = (g->start + span * i / steps) * PI / 180,
-                   b = (g->start + span * (i + 1) / steps) * PI / 180;
-            d.p[0] = point(x + w / 2, y + h / 2);
-            d.p[1] = point(x + w / 2 + cos(t) * w / 2, y + h / 2 + sin(t) * h / 2);
-            d.p[2] = point(x + w / 2 + cos(b) * w / 2, y + h / 2 + sin(b) * h / 2);
-            d.opa = g->fade ? (lv_opa_t)(24 + 200 * (i + 1) / steps) : LV_OPA_COVER;
-            lv_draw_triangle(layer, &d);
+        if (sector_cache(g, (int)w, (int)h)) {
+            lv_draw_image_dsc_t d;
+            lv_draw_image_dsc_init(&d);
+            d.src = &g->image;
+            d.recolor = g->fill;
+            d.recolor_opa = LV_OPA_COVER;
+            d.scale_x = (int32_t)lround(w * 256 / g->image.header.w);
+            d.scale_y = (int32_t)lround(h * 256 / g->image.header.h);
+            d.antialias = 1;
+            lv_area_t image_area = {a.x1, a.y1, a.x1 + g->image.header.w - 1,
+                                    a.y1 + g->image.header.h - 1};
+            lv_draw_image(layer, &d, &image_area);
         }
     } else {
         if (g->kind == 10 && g->count >= 3) {
@@ -150,6 +219,10 @@ lv_obj_t *lvp_graphic_create(lv_obj_t *parent, unsigned kind) {
     g->width = 2;
     g->grid_x = g->grid_y = 20;
     g->end = 45;
+    g->head_opacity = g->radial_opacity = 255;
+    g->fade_power = 1;
+    g->raster_size = 512;
+    g->dirty = 1;
     lv_obj_remove_style_all(obj);
     lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_user_data(obj, g);
@@ -162,6 +235,8 @@ int lvp_graphic_property(lv_obj_t *obj, const char *key, const char *value) {
     if (!g)
         return 0;
     double n = strtod(value, NULL);
+    if (!isfinite(n))
+        return 0;
     if (!strcmp(key, "color"))
         g->color = lv_color_hex((uint32_t)strtoul(value[0] == '#' ? value + 1 : value, NULL, 16));
     else if (!strcmp(key, "bg"))
@@ -184,6 +259,18 @@ int lvp_graphic_property(lv_obj_t *obj, const char *key, const char *value) {
         g->smooth = !strcmp(value, "catmull-rom");
     else if (!strcmp(key, "fade"))
         g->fade = !strcmp(value, "true");
+    else if (!strcmp(key, "tailOpacity"))
+        g->tail_opacity = (int)fmax(0, fmin(255, n));
+    else if (!strcmp(key, "headOpacity"))
+        g->head_opacity = (int)fmax(0, fmin(255, n));
+    else if (!strcmp(key, "radialOpacity"))
+        g->radial_opacity = (int)fmax(0, fmin(255, n));
+    else if (!strcmp(key, "fadePower"))
+        g->fade_power = (int)fmax(1, fmin(8, n));
+    else if (!strcmp(key, "innerRadius"))
+        g->inner_radius = (int)fmax(0, fmin(99, n));
+    else if (!strcmp(key, "rasterSize"))
+        g->raster_size = (int)fmax(32, fmin(512, n));
     else if (!strcmp(key, "points")) {
         const char *p = value;
         g->count = 0;
@@ -204,6 +291,8 @@ int lvp_graphic_property(lv_obj_t *obj, const char *key, const char *value) {
         }
     } else
         return 0;
+    if (strcmp(key, "bg") && strcmp(key, "color"))
+        g->dirty = 1;
     lv_obj_invalidate(obj);
     return 1;
 }

@@ -17,16 +17,18 @@ static const lvp_property polygon[] = {
     {"x", "130"},     {"y", "10"},     {"width", "40"}, {"height", "50"}, {"points", "20,0 38,48 20,30 2,48"},
     {"pivotX", "20"}, {"pivotY", "25"}};
 static const lvp_property sector[] = {{"x", "10"},      {"y", "90"},      {"width", "80"},
-                                      {"height", "80"}, {"fade", "true"}, {"endAngle", "90"}};
+                                      {"height", "80"}, {"fade", "true"}, {"endAngle", "90"},
+                                      {"innerRadius", "10"}, {"radialOpacity", "80"}, {"rasterSize", "32"}};
 static const lvp_property grid[] = {{"x", "130"},     {"y", "70"},     {"width", "80"},
                                     {"height", "80"}, {"gridX", "10"}, {"gridY", "10"}};
 static const lvp_property button[] = {{"x", "220"},     {"y", "15"},           {"width", "90"},
                                       {"height", "40"}, {"text", "Set angle"}, {"command.argument", "4"}};
 static const lvp_binding_def point[] = {{LVP_BIND_POINT_BASE + 3, 0, 0, ""}},
-                             angle[] = {{LVP_BIND_ROTATION, 1, 0, ""}};
+                             angle[] = {{LVP_BIND_ROTATION, 1, 0, ""}},
+                             sector_angle[] = {{LVP_BIND_END_ANGLE, 1, 0, ""}};
 static const lvp_node_def nodes[] = {
     {"home", 0, -1, "", root, 2, NULL, 0},        {"path", 9, 0, "", path, 6, point, 1},
-    {"polygon", 10, 0, "", polygon, 7, angle, 1}, {"sector", 11, 0, "", sector, 6, NULL, 0},
+    {"polygon", 10, 0, "", polygon, 7, angle, 1}, {"sector", 11, 0, "", sector, 9, sector_angle, 1},
     {"grid", 12, 0, "", grid, 6, NULL, 0},        {"button", 2, 0, "angle", button, 6, NULL, 0}};
 static const lvp_instruction yes[] = {{LVP_CONST, 0, 1}}, argument[] = {{LVP_ARGUMENT, 0, 0}};
 static const lvp_assignment assignment[] = {{1, argument, 1}};
