@@ -35,6 +35,7 @@ jobs:
       - run: python3 scripts/bootstrap.py --wasm
       - run: pnpm build:wasm && pnpm build
       - run: pnpm test && pnpm test:render && pnpm test:extensions && pnpm test:dbc && pnpm test:serial
+      - run: node packages/cli/dist/main.js build examples/rider --wasm && pnpm test:declarative
       - name: Compile Linux DRM production target
         run: |
           sudo apt-get update && sudo apt-get install -y libdrm-dev
@@ -44,7 +45,12 @@ jobs:
       - name: Build Linux gateway with project codec
         run: |
           node packages/cli/dist/main.js build examples/vehicle --gateway
-          sudo modprobe vcan
+          # Hosted Azure kernels may omit optional modules from the runner image.
+          # Install the exact matching package; fail if vcan still cannot be loaded.
+          if ! sudo modprobe vcan; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+            sudo modprobe vcan
+          fi
           sudo ip link add dev vcan0 type vcan
           sudo ip link set vcan0 up
           .venv/bin/python tests/test_socketcan.py examples/vehicle/.lvglplus/gateway/lvp_can_gateway
@@ -52,4 +58,6 @@ jobs:
         if: always()
         with:
           name: render-results
-          path: build/parity
+          path: |
+            build/parity
+            examples/rider/.lvglplus/parity

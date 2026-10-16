@@ -27,6 +27,23 @@ export const opcodes = [
   "select",
   "jump_false",
   "jump",
+  "sin",
+  "cos",
+  "atan2",
+  "hypot",
+  "sqrt",
+  "abs",
+  "floor",
+  "ceil",
+  "min",
+  "max",
+  "clamp",
+  "cluster_id",
+  "cluster_size",
+  "cluster_x",
+  "cluster_y",
+  "argument",
+  "fit_scale",
 ];
 export const valueTypes = ["number", "integer", "boolean", "string", "enum"];
 export const widgetKinds = [
@@ -39,6 +56,10 @@ export const widgetKinds = [
   "switch",
   "image",
   "custom",
+  "path",
+  "polygon",
+  "sector",
+  "grid",
 ];
 export const bindingKinds = [
   "text",
@@ -47,6 +68,19 @@ export const bindingKinds = [
   "hidden",
   "color",
   "quality",
+  "x",
+  "y",
+  "width",
+  "height",
+  "rotation",
+  "scaleX",
+  "scaleY",
+  "opacity",
+  "bg",
+  "startAngle",
+  "endAngle",
+  "lineWidth",
+  ...Array.from({ length: 64 }, (_, i) => [`p${i}x`, `p${i}y`]).flat(),
 ];
 export interface FlatNode extends Omit<UINode, "children"> {
   parent: number;
@@ -134,6 +168,38 @@ export function encodePackage(
       str(b.format ?? "");
     }
   }
+  const program = ir.program ?? { actions: [], clocks: [], timers: [] };
+  const code = (ops: Instruction[]) => {
+    u32(ops.length);
+    for (const ins of ops) {
+      u32(opcodes.indexOf(ins.op));
+      u32(ins.signal ?? 0);
+      number(ins.value ?? 0);
+    }
+  };
+  u32(program.actions.length);
+  for (const a of program.actions) {
+    str(a.name);
+    u32(a.parameter);
+    code(a.guard);
+    u32(a.assignments.length);
+    for (const assignment of a.assignments) {
+      u32(assignment.target);
+      code(assignment.code);
+    }
+  }
+  u32(program.clocks.length);
+  for (const c of program.clocks) {
+    u32(c.signal);
+    u32(c.running);
+    u32(c.rate);
+  }
+  u32(program.timers.length);
+  for (const t of program.timers) {
+    u32(t.clock);
+    u32(t.intervalMs);
+    str(t.command);
+  }
   return Uint8Array.from(bytes);
 }
 
@@ -214,8 +280,52 @@ export function generateC(
         `{${cString(n.id)}, ${widgetKinds.indexOf(n.kind)}, ${n.parent}, ${cString(n.command ?? "")}, ${Object.keys(n.props).length ? `props_${i}` : "NULL"}, ${Object.keys(n.props).length}, ${n.bindings.length ? `bind_${i}` : "NULL"}, ${n.bindings.length}}`,
     ),
   );
+  const program = ir.program ?? { actions: [], clocks: [], timers: [] };
+  const instructions = (name: string, code: Instruction[]) =>
+    list(
+      "lvp_instruction",
+      name,
+      code.map(
+        (ins) =>
+          `{${opcodes.indexOf(ins.op)}, ${ins.signal ?? 0}, ${real(ins.value ?? 0)}}`,
+      ),
+    );
+  program.actions.forEach((a, i) => {
+    instructions(`guard_${i}`, a.guard);
+    a.assignments.forEach((v, j) => instructions(`set_${i}_${j}`, v.code));
+    list(
+      "lvp_assignment",
+      `sets_${i}`,
+      a.assignments.map(
+        (v, j) => `{${v.target}, set_${i}_${j}, ${v.code.length}}`,
+      ),
+    );
+  });
+  list(
+    "lvp_action_def",
+    "actions",
+    program.actions.map(
+      (a, i) =>
+        `{${cString(a.name)}, guard_${i}, ${a.guard.length}, sets_${i}, ${a.assignments.length}, ${a.parameter}}`,
+    ),
+  );
+  list(
+    "lvp_clock_def",
+    "clocks",
+    program.clocks.map((c) => `{${c.signal}, ${c.running}, ${c.rate}}`),
+  );
+  list(
+    "lvp_timer_def",
+    "timers",
+    program.timers.map(
+      (t) => `{${t.clock}, ${t.intervalMs}, ${cString(t.command)}}`,
+    ),
+  );
   chunks.push(
-    `const lvp_schema ${ir.name}_schema = {\n  ${FORMAT_VERSION}, ${target.width}, ${target.height}, ${cString(ir.initialPage)},\n  ${ir.signals.length ? "signals" : "NULL"}, ${ir.signals.length}, ${ir.evaluationOrder.length ? "evaluation_order" : "NULL"},\n  ${ir.commands.length ? "commands" : "NULL"}, ${ir.commands.length}, nodes, ${nodes.length}\n};\n`,
+    `static const lvp_program program = {${program.actions.length ? "actions" : "NULL"}, ${program.actions.length}, ${program.clocks.length ? "clocks" : "NULL"}, ${program.clocks.length}, ${program.timers.length ? "timers" : "NULL"}, ${program.timers.length}};`,
+  );
+  chunks.push(
+    `const lvp_schema ${ir.name}_schema = {\n  ${FORMAT_VERSION}, ${target.width}, ${target.height}, ${cString(ir.initialPage)},\n  ${ir.signals.length ? "signals" : "NULL"}, ${ir.signals.length}, ${ir.evaluationOrder.length ? "evaluation_order" : "NULL"},\n  ${ir.commands.length ? "commands" : "NULL"}, ${ir.commands.length}, nodes, ${nodes.length}, &program\n};\n`,
   );
   return {
     "ui_gen.c": chunks.join("\n\n"),

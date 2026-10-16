@@ -1,4 +1,4 @@
-# XML、IR 与包格式 v1
+# XML v1、公共 IR 与包格式 v3
 
 ## 工程入口
 
@@ -18,7 +18,7 @@
 
 类型：number（C double）、integer（int32 范围）、boolean（0/1）、string（最多 255 UTF-8 字节）、enum（零起始索引，`choices="park|drive|reverse"`）。`computed` 为只读数值/布尔派生值，全部依赖拓扑排序；循环、缺失引用和任意代码执行均拒绝。
 
-表达式支持算术、比较、`!`、`&&`、`||` 和三元。AND/OR/三元短路；除零、溢出或结果类型不匹配令派生信号质量变为 INVALID，保留旧值。表达式最多 128 token、96 条指令和 24 层嵌套。字符串通过绑定 format 格式化，不支持字符串表达式。
+表达式支持算术、比较、`!`、`&&`、`||` 和三元。AND/OR/三元短路；除零、溢出或结果类型不匹配令派生信号质量变为 INVALID，保留旧值。表达式最多 512 token、256 条指令和 24 层嵌套。字符串通过绑定 format 格式化，不支持字符串表达式。
 
 本地 command 修改明确指定的可写数值信号。无 target 的 command 交给应用处理器；不存在处理器时失败，不能假定发送成功。设备确认通过 request ID 的完成接口回写。
 
@@ -77,3 +77,6 @@ IR 含 formatVersion、name、lvglVersion、targets、signals、evaluationOrder�
 
 
 0.2.0 扩展：公共 IR/二进制包为 v2，XML/project 仍为 v1；翻译、动画、自定义控件和字体语法见 [P3–P5](p3-p5.md)。SDK 同时接受旧 v1 包；旧运行时会拒绝新 v2 包。
+
+
+本轮通用声明式扩展：IR/包 v3、SDK ABI 2，兼容加载 v1/v2 包；新增图形、集合、数学、快照、动作、时钟和状态机见 [通用能力规范](declarative.md)。

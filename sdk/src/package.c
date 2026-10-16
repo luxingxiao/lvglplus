@@ -105,7 +105,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
     s->width = count(&r, 4096);
     s->height = count(&r, 4096);
     s->initial_page = text(&r);
-    if ((s->version != 1 && s->version != 2) || !s->width || !s->height)
+    if ((s->version < 1 || s->version > 3) || !s->width || !s->height)
         r.failed = 1;
     s->signal_count = count(&r, LVP_SIGNAL_MAX);
     signals = memory(&r, s->signal_count * sizeof(*signals));
@@ -129,7 +129,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
                 choices[j] = text(&r);
         }
         signals[i].unit = text(&r);
-        signals[i].code_count = count(&r, 96);
+        signals[i].code_count = count(&r, LVP_CODE_MAX);
         code = memory(&r, signals[i].code_count * sizeof(*code));
         signals[i].code = code;
         if (r.failed)
@@ -138,7 +138,8 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
             code[j].op = word(&r);
             code[j].signal = word(&r);
             code[j].value = real(&r);
-            if (code[j].op > LVP_JUMP || (code[j].op == LVP_LOAD && code[j].signal >= s->signal_count))
+            if (code[j].op > (s->version >= 3 ? LVP_FIT_SCALE : LVP_JUMP) ||
+                (code[j].op == LVP_LOAD && code[j].signal >= s->signal_count))
                 r.failed = 1;
         }
     }
@@ -178,7 +179,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
         parent = word(&r);
         nodes[i].parent = parent == UINT32_MAX ? -1 : (int32_t)parent;
         nodes[i].command = text(&r);
-        if (nodes[i].kind > 8 || (parent != UINT32_MAX && parent >= i) ||
+        if (nodes[i].kind > (s->version >= 3 ? 12u : 8u) || (parent != UINT32_MAX && parent >= i) ||
             (parent == UINT32_MAX && nodes[i].kind != 0))
             r.failed = 1;
         nodes[i].property_count = count(&r, 64);
@@ -190,7 +191,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
             props[j].name = text(&r);
             props[j].value = text(&r);
         }
-        nodes[i].binding_count = count(&r, 6);
+        nodes[i].binding_count = count(&r, s->version >= 3 ? 146 : 6);
         bindings = memory(&r, nodes[i].binding_count * sizeof(*bindings));
         nodes[i].bindings = bindings;
         if (r.failed)
@@ -202,7 +203,8 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
             bindings[j].two_way = word(&r);
             bindings[j].format = text(&r);
             prop = bindings[j].property;
-            if (prop > LVP_BIND_QUALITY || bindings[j].signal >= s->signal_count || bindings[j].two_way > 1) {
+            if (prop > (s->version >= 3 ? LVP_BIND_POINT_BASE + 127 : LVP_BIND_QUALITY) ||
+                bindings[j].signal >= s->signal_count || bindings[j].two_way > 1) {
                 r.failed = 1;
                 break;
             }
@@ -216,6 +218,69 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
                 (!((kind == 4 && prop == LVP_BIND_VALUE) || (kind == 6 && prop == LVP_BIND_CHECKED)) ||
                  signals[bindings[j].signal].code_count))
                 r.failed = 1;
+        }
+    }
+    if (s->version >= 3 && !r.failed) {
+        lvp_program *p = memory(&r, sizeof(*p));
+        if (!p)
+            goto invalid;
+        s->program = p;
+        p->action_count = count(&r, LVP_ACTION_MAX);
+        lvp_action_def *actions = memory(&r, p->action_count * sizeof(*actions));
+        p->actions = actions;
+        if (r.failed)
+            goto invalid;
+        for (i = 0; i < p->action_count && !r.failed; i++) {
+            actions[i].name = text(&r);
+            actions[i].parameter = word(&r);
+            actions[i].guard_count = count(&r, LVP_CODE_MAX);
+            lvp_instruction *guard = memory(&r, actions[i].guard_count * sizeof(*guard));
+            actions[i].guard = guard;
+            if (r.failed)
+                break;
+            for (j = 0; j < actions[i].guard_count && !r.failed; j++) {
+                guard[j].op = word(&r);
+                guard[j].signal = word(&r);
+                guard[j].value = real(&r);
+            }
+            actions[i].assignment_count = count(&r, LVP_ASSIGNMENT_MAX);
+            lvp_assignment *sets = memory(&r, actions[i].assignment_count * sizeof(*sets));
+            actions[i].assignments = sets;
+            if (r.failed)
+                break;
+            for (j = 0; j < actions[i].assignment_count && !r.failed; j++) {
+                sets[j].target = word(&r);
+                sets[j].code_count = count(&r, LVP_CODE_MAX);
+                lvp_instruction *code = memory(&r, sets[j].code_count * sizeof(*code));
+                sets[j].code = code;
+                if (r.failed)
+                    break;
+                for (uint32_t k = 0; k < sets[j].code_count && !r.failed; k++) {
+                    code[k].op = word(&r);
+                    code[k].signal = word(&r);
+                    code[k].value = real(&r);
+                }
+            }
+        }
+        p->clock_count = count(&r, LVP_CLOCK_MAX);
+        lvp_clock_def *clocks = memory(&r, p->clock_count * sizeof(*clocks));
+        p->clocks = clocks;
+        if (r.failed)
+            goto invalid;
+        for (i = 0; i < p->clock_count && !r.failed; i++) {
+            clocks[i].signal = word(&r);
+            clocks[i].running = (int32_t)word(&r);
+            clocks[i].rate = (int32_t)word(&r);
+        }
+        p->timer_count = count(&r, LVP_TIMER_MAX);
+        lvp_timer_def *timers = memory(&r, p->timer_count * sizeof(*timers));
+        p->timers = timers;
+        if (r.failed)
+            goto invalid;
+        for (i = 0; i < p->timer_count && !r.failed; i++) {
+            timers[i].clock = (int32_t)word(&r);
+            timers[i].interval_ms = word(&r);
+            timers[i].command = text(&r);
         }
     }
     if (r.failed || r.p != r.end)

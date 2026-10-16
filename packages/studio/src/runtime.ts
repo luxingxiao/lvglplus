@@ -33,6 +33,8 @@ export class PreviewRuntime {
       end: [null, []],
       disconnect: [null, ["number"]],
       pointer: [null, ["number", "number", "number"]],
+      command_number: ["number", ["string", "number"]],
+      action: ["number", ["string"]],
       command: ["number", ["string"]],
       command_state: ["number", ["number"]],
       bounds: ["number", ["number", "number"]],
@@ -68,6 +70,12 @@ export class PreviewRuntime {
         Uint8Array.from(raw, (c) => c.charCodeAt(0)),
       );
     }
+  }
+  commandNumber(name: string, value: number) {
+    return this.calls.command_number(name, value);
+  }
+  action(name: string) {
+    return this.calls.action(name);
   }
   tick(time: number) {
     this.calls.tick(time);

@@ -1,3 +1,5 @@
+import { lowerDeclarative, compileProgram } from "./declarative.js";
+import { bindingKinds } from "./generate.js";
 import { parseXml } from "./xml.js";
 import { compileExpression, topologicalSignals } from "./expression.js";
 import {
@@ -23,6 +25,10 @@ const kinds = new Set([
   "switch",
   "image",
   "custom",
+  "path",
+  "polygon",
+  "sector",
+  "grid",
 ]);
 export const properties = new Set([
   "x",
@@ -46,6 +52,7 @@ export const properties = new Set([
   "border",
   "borderColor",
   "opacity",
+  "bgOpacity",
   "grow",
   "src",
   "navigate",
@@ -54,6 +61,22 @@ export const properties = new Set([
   "textKey",
   "customType",
   "font",
+  "rotation",
+  "scaleX",
+  "scaleY",
+  "pivotX",
+  "pivotY",
+  "clip",
+  "bgEnd",
+  "gradientDirection",
+  "lineWidth",
+  "dashLength",
+  "dashGap",
+  "points",
+  "curve",
+  "gridX",
+  "gridY",
+  "fade",
 ]);
 const types = new Set(["number", "integer", "boolean", "string", "enum"]);
 const identifier = /^[A-Za-z_][A-Za-z0-9_.]*$/;
@@ -114,6 +137,31 @@ export function compile(input: CompileInput): CompileResult {
       input.manifest.targets.length
   )
     error(ui, "TARGET", "Target names must be unique");
+  if (input.manifest.fonts !== undefined) {
+    const fonts = input.manifest.fonts;
+    if (!Array.isArray(fonts) || fonts.length > 16)
+      error(ui, "FONT", "At most 16 declared fonts");
+    else {
+      const names = new Set<string>();
+      for (const f of fonts) {
+        if (
+          !f ||
+          !/^[A-Za-z_]\w*$/.test(f.name ?? "") ||
+          names.has(f.name) ||
+          typeof f.file !== "string" ||
+          !Number.isInteger(f.size) ||
+          f.size < 8 ||
+          f.size > 160 ||
+          typeof f.characters !== "string" ||
+          !f.characters.length ||
+          f.characters.length > 8192
+        )
+          error(ui, "FONT", "Invalid font declaration");
+        if (f) names.add(f.name);
+      }
+    }
+  }
+  const declaration = lowerDeclarative(model, ui, error);
   const signals: Signal[] = [],
     signalNodes: XmlNode[] = [],
     commands: Command[] = [];
@@ -245,6 +293,7 @@ export function compile(input: CompileInput): CompileResult {
       ...(node.attrs.target ? { signal: target, value } : {}),
     });
   }
+  const program = compileProgram(declaration, signals, commands, error);
   const locales = new Map<string, Map<string, string>>();
   const defaultLocale = ui.attrs.locale ?? "en";
   for (const section of ui.children.filter((n) => n.tag === "translations")) {
@@ -301,7 +350,7 @@ export function compile(input: CompileInput): CompileResult {
             error(style, "PROPERTY", `Unknown style property ${key}`);
         styles.set(name, props);
       }
-    } else if (!["page", "translations"].includes(node.tag))
+    } else if (!["page", "translations", "inputs"].includes(node.tag))
       error(node, "UI_ELEMENT", `Unknown dashboard child ${node.tag}`);
   }
   const ids = new Set<string>();
@@ -434,7 +483,7 @@ export function compile(input: CompileInput): CompileResult {
       if (new TextEncoder().encode(value).length > 4096)
         error(node, "PROPERTY_SIZE", `${key} exceeds 4096 UTF-8 bytes`);
       if (
-        ["bg", "color", "borderColor"].includes(key) &&
+        ["bg", "color", "borderColor", "bgEnd"].includes(key) &&
         !/^#[0-9a-fA-F]{6}$/.test(value)
       )
         error(node, "COLOR", `${key} must be #RRGGBB`);
@@ -451,6 +500,7 @@ export function compile(input: CompileInput): CompileResult {
           "value",
           "border",
           "opacity",
+          "bgOpacity",
           "grow",
           "startAngle",
           "endAngle",
@@ -499,8 +549,55 @@ export function compile(input: CompileInput): CompileResult {
         Number(value) < 0
       )
         error(node, "NUMBER", `${key} cannot be negative`);
-      if (["opacity", "grow"].includes(key) && Number(value) > 255)
+      if (["opacity", "bgOpacity", "grow"].includes(key) && Number(value) > 255)
         error(node, "NUMBER", `${key} cannot exceed 255`);
+    }
+    for (const key of [
+      "rotation",
+      "scaleX",
+      "scaleY",
+      "pivotX",
+      "pivotY",
+      "lineWidth",
+      "dashLength",
+      "dashGap",
+      "gridX",
+      "gridY",
+    ])
+      if (
+        props[key] !== undefined &&
+        (!/^-?\d+$/.test(props[key]) ||
+          Math.abs(Number(props[key])) > 32767 ||
+          (["scaleX", "scaleY", "lineWidth", "dashLength", "dashGap"].includes(
+            key,
+          ) &&
+            Number(props[key]) < 0) ||
+          (["gridX", "gridY"].includes(key) && Number(props[key]) < 2))
+      )
+        error(node, "GEOMETRY", `Invalid ${key}`);
+    if (props.clip !== undefined && !["true", "false"].includes(props.clip))
+      error(node, "GEOMETRY", "clip must be boolean");
+    if (props.fade !== undefined && !["true", "false"].includes(props.fade))
+      error(node, "GEOMETRY", "fade must be boolean");
+    if (props.curve && !["linear", "catmull-rom"].includes(props.curve))
+      error(node, "GEOMETRY", "Invalid curve");
+    if (
+      props.gradientDirection &&
+      !["horizontal", "vertical"].includes(props.gradientDirection)
+    )
+      error(node, "GEOMETRY", "Invalid gradientDirection");
+    if (props.points) {
+      const pts = props.points.split(/\s+/);
+      if (
+        pts.length < 2 ||
+        pts.length > 64 ||
+        pts.some(
+          (p) =>
+            !/^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$/.test(p) ||
+            p.split(",").some((v) => Math.abs(Number(v)) > 32767),
+        )
+      )
+        error(node, "GEOMETRY", "points requires 2..64 bounded x,y pairs");
     }
     if (Number(props.min ?? 0) >= Number(props.max ?? 100))
       error(node, "RANGE", "min must be smaller than max");
@@ -587,12 +684,20 @@ export function compile(input: CompileInput): CompileResult {
           property = child.attrs.property as Binding["property"];
         if (signal < 0)
           error(child, "BIND_SIGNAL", `Unknown signal ${child.attrs.signal}`);
-        if (
-          !["text", "value", "checked", "hidden", "color", "quality"].includes(
-            property,
-          )
-        )
+        if (!bindingKinds.includes(property))
           error(child, "BIND_PROPERTY", `Unknown binding property ${property}`);
+        if (/^p\d+[xy]$/.test(property)) {
+          const point = Number(property.slice(1, -1));
+          if (
+            !["path", "polygon"].includes(node.tag) ||
+            point >= (props.points?.split(/\s+/).length ?? 0)
+          )
+            error(
+              child,
+              "BIND_POINT",
+              "Point binding outside declared geometry",
+            );
+        }
         const twoWay = child.attrs.direction === "two-way";
         if (
           child.attrs.direction &&
@@ -696,12 +801,41 @@ export function compile(input: CompileInput): CompileResult {
           ...(format ? { format } : {}),
         });
       } else if (child.tag === "on") {
-        attributes(child, ["event", "command"]);
+        attributes(child, ["event", "command", "argument", "argumentSignal"]);
         if (child.children.length)
           error(child, "EVENT", "on cannot contain children");
         if (child.attrs.event !== "click" || node.tag !== "button")
           error(child, "EVENT", "Current events support button click");
         command = child.attrs.command;
+        if (
+          child.attrs.argument !== undefined ||
+          child.attrs.argumentSignal !== undefined
+        ) {
+          if (
+            !program.actions.some(
+              (a) => a.name === command && a.parameter > 0,
+            ) ||
+            (child.attrs.argument !== undefined &&
+              child.attrs.argumentSignal !== undefined)
+          )
+            error(
+              child,
+              "ARGUMENT",
+              "Expected parameterized action and one argument source",
+            );
+          if (child.attrs.argument !== undefined) {
+            if (!Number.isFinite(Number(child.attrs.argument)))
+              error(child, "ARGUMENT", "Argument must be finite");
+            props["command.argument"] = child.attrs.argument;
+          } else {
+            const index = signals.findIndex(
+              (s) => s.name === child.attrs.argumentSignal,
+            );
+            if (index < 0 || signals[index].type === "string")
+              error(child, "ARGUMENT", "Expected numeric argumentSignal");
+            props["command.argumentSignal"] = String(index);
+          }
+        }
         if (!commands.some((c) => c.name === command))
           error(child, "COMMAND_REF", `Unknown command ${command}`);
       }
@@ -723,6 +857,37 @@ export function compile(input: CompileInput): CompileResult {
   const pages = ui.children
     .filter((n) => n.tag === "page")
     .flatMap((n, i) => build(n, "page", i));
+  for (const section of ui.children.filter((n) => n.tag === "inputs")) {
+    attributes(section, []);
+    const seen = new Set<string>();
+    for (const key of section.children) {
+      attributes(key, ["action", "command"]);
+      if (
+        key.children.length ||
+        key.tag !== "key" ||
+        ![
+          "up",
+          "down",
+          "left",
+          "right",
+          "confirm",
+          "back",
+          "next",
+          "previous",
+        ].includes(key.attrs.action) ||
+        seen.has(key.attrs.action) ||
+        !commands.some((c) => c.name === key.attrs.command)
+      )
+        error(
+          key,
+          "INPUT",
+          "Expected unique semantic action and existing command",
+        );
+      seen.add(key.attrs.action);
+      for (const page of pages)
+        page.props["input." + key.attrs.action] = key.attrs.command;
+    }
+  }
   if (!pages.length)
     error(ui, "PAGE_REQUIRED", "At least one page is required");
   if (count > 512) error(ui, "NODE_LIMIT", "At most 512 nodes are supported");
@@ -780,6 +945,7 @@ export function compile(input: CompileInput): CompileResult {
       pages,
       initialPage,
       evaluationOrder,
+      program,
     },
   };
 }

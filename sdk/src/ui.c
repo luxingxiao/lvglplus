@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#include "graphics.h"
 #include "lvgl.h"
 #include "lvglplus_ui.h"
 #include <math.h>
@@ -174,6 +175,7 @@ static void format_value(char *out, size_t cap, const char *fmt, const lvp_value
     }
     out[used] = 0;
 }
+static void property(lvp_ui *ui, uint32_t index, const char *name, const char *value);
 static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *value, void *user) {
     binding_state *b = user;
     lvp_ui *ui = b->ui;
@@ -181,6 +183,27 @@ static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *va
     lv_obj_t *obj = ui->objects[b->node];
     char text[384];
     ui->applying++;
+    if (d->property >= LVP_BIND_X) {
+        static const char *names[] = {"x",      "y",       "width", "height",     "rotation", "scaleX",
+                                      "scaleY", "opacity", "bg",    "startAngle", "endAngle", "lineWidth"};
+        if (value->quality != LVP_VALID || !isfinite(value->number)) {
+            ui->applying--;
+            return;
+        }
+        if (d->property >= LVP_BIND_POINT_BASE) {
+            if (ui->schema->nodes[b->node].kind == 9 || ui->schema->nodes[b->node].kind == 10)
+                lvp_graphic_point(obj, (d->property - LVP_BIND_POINT_BASE) / 2,
+                                  (d->property - LVP_BIND_POINT_BASE) % 2, value->number);
+        } else if (d->property - LVP_BIND_X < sizeof(names) / sizeof(names[0])) {
+            if (d->property == LVP_BIND_BG)
+                snprintf(text, sizeof(text), "#%06x", (unsigned)fmax(0, fmin(0xffffff, value->number)));
+            else
+                snprintf(text, sizeof(text), "%.6f", fmax(-32767, fmin(32767, value->number)));
+            property(ui, b->node, names[d->property - LVP_BIND_X], text);
+        }
+        ui->applying--;
+        return;
+    }
     switch (d->property) {
     case LVP_BIND_TEXT:
         if (value->quality != LVP_VALID)
@@ -227,8 +250,13 @@ static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *va
             lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
         break;
     case LVP_BIND_COLOR:
-        if (value->number >= 0 && value->number <= 0xffffff)
+        if (value->number >= 0 && value->number <= 0xffffff) {
             lv_obj_set_style_text_color(obj, lv_color_hex((uint32_t)value->number), 0);
+            if (ui->schema->nodes[b->node].kind >= 9) {
+                snprintf(text, sizeof(text), "#%06x", (unsigned)value->number);
+                lvp_graphic_property(obj, "color", text);
+            }
+        }
         break;
     case LVP_BIND_QUALITY: {
         static const char *q[] = {"LIVE", "STALE", "INVALID", "OFFLINE"};
@@ -262,8 +290,19 @@ static void click_node(lv_event_t *event) {
     binding_state *b = lv_event_get_user_data(event);
     const lvp_node_def *node = &b->ui->schema->nodes[b->node];
     uint32_t i;
-    if (node->command && node->command[0])
-        lvp_command(b->ui->context, node->command);
+    if (node->command && node->command[0]) {
+        const char *argument = node_property(node, "command.argument"),
+                   *signal = node_property(node, "command.argumentSignal");
+        if (argument)
+            lvp_command_number(b->ui->context, node->command, strtod(argument, NULL));
+        else if (signal) {
+            int32_t index = atoi(signal);
+            const lvp_value *value = index < 0 ? NULL : lvp_get(b->ui->context, (uint32_t)index);
+            if (value && value->quality == LVP_VALID)
+                lvp_command_number(b->ui->context, node->command, value->number);
+        } else
+            lvp_command(b->ui->context, node->command);
+    }
     for (i = 0; i < node->property_count; i++)
         if (!strcmp(node->properties[i].name, "navigate"))
             lvp_ui_navigate(b->ui, node->properties[i].value);
@@ -271,8 +310,32 @@ static void click_node(lv_event_t *event) {
 static void property(lvp_ui *ui, uint32_t index, const char *name, const char *value) {
     lv_obj_t *obj = ui->objects[index];
     uint32_t kind = ui->schema->nodes[index].kind;
-    int32_t n = atoi(value);
-    if (!strcmp(name, "x"))
+    double numeric = strtod(value, NULL);
+    int32_t n = (int32_t)fmax(-32767, fmin(32767, isfinite(numeric) ? numeric : 0));
+    if (kind >= 9 && lvp_graphic_property(obj, name, value))
+        return;
+    if (!strcmp(name, "rotation"))
+        lv_obj_set_style_transform_rotation(
+            obj, (int32_t)lround(fmax(-32767, fmin(32767, isfinite(numeric) ? numeric : 0)) * 10), 0);
+    else if (!strcmp(name, "scaleX"))
+        lv_obj_set_style_transform_scale_x(obj, (int32_t)fmax(0, n), 0);
+    else if (!strcmp(name, "scaleY"))
+        lv_obj_set_style_transform_scale_y(obj, (int32_t)fmax(0, n), 0);
+    else if (!strcmp(name, "pivotX"))
+        lv_obj_set_style_transform_pivot_x(obj, n, 0);
+    else if (!strcmp(name, "pivotY"))
+        lv_obj_set_style_transform_pivot_y(obj, n, 0);
+    else if (!strcmp(name, "clip")) {
+        if (!strcmp(value, "false"))
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+        else
+            lv_obj_remove_flag(obj, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+    } else if (!strcmp(name, "bgEnd"))
+        lv_obj_set_style_bg_grad_color(obj, lv_color_hex(color(value)), 0);
+    else if (!strcmp(name, "gradientDirection"))
+        lv_obj_set_style_bg_grad_dir(obj, !strcmp(value, "horizontal") ? LV_GRAD_DIR_HOR : LV_GRAD_DIR_VER,
+                                     0);
+    else if (!strcmp(name, "x"))
         lv_obj_set_x(obj, n);
     else if (!strcmp(name, "y"))
         lv_obj_set_y(obj, n);
@@ -283,7 +346,9 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
     else if (!strcmp(name, "bg")) {
         lv_obj_set_style_bg_color(obj, lv_color_hex(color(value)), 0);
         lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
-    } else if (!strcmp(name, "color")) {
+    } else if (!strcmp(name, "bgOpacity"))
+        lv_obj_set_style_bg_opa(obj, (lv_opa_t)fmax(0, fmin(255, n)), 0);
+    else if (!strcmp(name, "color")) {
         lv_color_t c = lv_color_hex(color(value));
         lv_obj_set_style_text_color(obj, c, 0);
         if (kind == 3 || kind == 4 || kind == 6)
@@ -332,7 +397,7 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
     else if (!strcmp(name, "borderColor"))
         lv_obj_set_style_border_color(obj, lv_color_hex(color(value)), 0);
     else if (!strcmp(name, "opacity"))
-        lv_obj_set_style_opa(obj, (lv_opa_t)n, 0);
+        lv_obj_set_style_opa(obj, (lv_opa_t)fmax(0, fmin(255, n)), 0);
     else if (!strcmp(name, "grow"))
         lv_obj_set_flex_grow(obj, (uint8_t)n);
     else if (!strcmp(name, "value")) {
@@ -395,6 +460,12 @@ static int make_objects(lvp_ui *ui) {
                     obj = factory->create(parent);
                 break;
             }
+            case 9:
+            case 10:
+            case 11:
+            case 12:
+                obj = lvp_graphic_create(parent, d->kind);
+                break;
             default:
                 return 0;
             }
@@ -728,4 +799,18 @@ int32_t lvp_ui_hit_test(lvp_ui *ui, int32_t x, int32_t y) {
             return (int32_t)i - 1;
     }
     return -1;
+}
+
+int32_t lvp_ui_action(lvp_ui *ui, const char *action) {
+    char key[40];
+    uint32_t i;
+    if (!ui || !action || strlen(action) > 24)
+        return LVP_NOT_FOUND;
+    snprintf(key, sizeof(key), "input.%s", action);
+    for (i = 0; i < ui->schema->node_count; i++)
+        if (ui->schema->nodes[i].parent < 0 && ui->objects[i] == lv_display_get_screen_active(ui->display)) {
+            const char *command = node_property(&ui->schema->nodes[i], key);
+            return command ? lvp_command(ui->context, command) : LVP_NOT_FOUND;
+        }
+    return LVP_NOT_FOUND;
 }

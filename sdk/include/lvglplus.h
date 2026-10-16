@@ -6,7 +6,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define LVP_FORMAT_VERSION 2
+#define LVP_FORMAT_VERSION 3
+#define LVP_SDK_ABI 2
 #define LVP_STRING_MAX 255
 #define LVP_SIGNAL_MAX 256
 #define LVP_NODE_MAX 512
@@ -41,7 +42,24 @@ typedef enum {
     LVP_OR,
     LVP_SELECT,
     LVP_JUMP_FALSE,
-    LVP_JUMP
+    LVP_JUMP,
+    LVP_SIN,
+    LVP_COS,
+    LVP_ATAN2,
+    LVP_HYPOT,
+    LVP_SQRT,
+    LVP_ABS,
+    LVP_FLOOR,
+    LVP_CEIL,
+    LVP_MIN,
+    LVP_MAX,
+    LVP_CLAMP,
+    LVP_CLUSTER_ID,
+    LVP_CLUSTER_SIZE,
+    LVP_CLUSTER_X,
+    LVP_CLUSTER_Y,
+    LVP_ARGUMENT,
+    LVP_FIT_SCALE
 } lvp_opcode;
 typedef struct {
     uint32_t op, signal;
@@ -72,7 +90,21 @@ typedef enum {
     LVP_BIND_CHECKED,
     LVP_BIND_HIDDEN,
     LVP_BIND_COLOR,
-    LVP_BIND_QUALITY
+    LVP_BIND_QUALITY,
+    LVP_BIND_X,
+    LVP_BIND_Y,
+    LVP_BIND_WIDTH,
+    LVP_BIND_HEIGHT,
+    LVP_BIND_ROTATION,
+    LVP_BIND_SCALE_X,
+    LVP_BIND_SCALE_Y,
+    LVP_BIND_OPACITY,
+    LVP_BIND_BG,
+    LVP_BIND_START_ANGLE,
+    LVP_BIND_END_ANGLE,
+    LVP_BIND_LINE_WIDTH,
+    /* Fixed-capacity geometry coordinates: x0,y0 through x63,y63. */
+    LVP_BIND_POINT_BASE
 } lvp_binding_kind;
 typedef struct {
     uint32_t property, signal, two_way;
@@ -88,6 +120,41 @@ typedef struct {
     const lvp_binding_def *bindings;
     uint32_t binding_count;
 } lvp_node_def;
+#define LVP_ACTION_MAX 128
+#define LVP_CLOCK_MAX 8
+#define LVP_TIMER_MAX 32
+#define LVP_ASSIGNMENT_MAX 128
+#define LVP_CODE_MAX 256
+typedef struct {
+    uint32_t target;
+    const lvp_instruction *code;
+    uint32_t code_count;
+} lvp_assignment;
+typedef struct {
+    const char *name;
+    const lvp_instruction *guard;
+    uint32_t guard_count;
+    const lvp_assignment *assignments;
+    uint32_t assignment_count;
+    uint32_t parameter; /* 0 none, 1 number, 2 integer, 3 boolean */
+} lvp_action_def;
+typedef struct {
+    uint32_t signal;
+    int32_t running, rate;
+} lvp_clock_def;
+typedef struct {
+    int32_t clock;
+    uint32_t interval_ms;
+    const char *command;
+} lvp_timer_def;
+typedef struct {
+    const lvp_action_def *actions;
+    uint32_t action_count;
+    const lvp_clock_def *clocks;
+    uint32_t clock_count;
+    const lvp_timer_def *timers;
+    uint32_t timer_count;
+} lvp_program;
 typedef struct {
     uint32_t version, width, height;
     const char *initial_page;
@@ -98,6 +165,7 @@ typedef struct {
     uint32_t command_count;
     const lvp_node_def *nodes;
     uint32_t node_count;
+    const lvp_program *program; /* v3; NULL in legacy schemas. */
 } lvp_schema;
 typedef struct {
     double number;
@@ -167,18 +235,26 @@ lvp_result lvp_adapter_get_info(lvp_context *ctx, uint32_t adapter, lvp_adapter_
 /* Publish is thread-safe with a proper HAL. Stopped/restarted source generations never leak old events. */
 lvp_result lvp_adapter_publish(lvp_context *ctx, uint32_t adapter, uint32_t signal, const lvp_value *value,
                                int is_event);
+typedef struct {
+    uint64_t fired, failures, deferred;
+} lvp_timing_stats;
+lvp_timing_stats lvp_timing(const lvp_context *ctx);
 void lvp_tick(lvp_context *ctx, uint64_t now_ms);
 void lvp_disconnect(lvp_context *ctx, uint64_t now_ms);
 void lvp_set_command_handler(lvp_context *ctx, lvp_command_fn handler, void *user);
 int32_t lvp_command(lvp_context *ctx, const char *name);
+int32_t lvp_command_number(lvp_context *ctx, const char *name, double argument);
 lvp_result lvp_command_complete(lvp_context *ctx, uint32_t request_id, int success);
 lvp_command_status lvp_command_state(const lvp_context *ctx, uint32_t request_id);
 lvp_result lvp_evaluate(const lvp_instruction *code, uint32_t length, const lvp_value *values,
                         uint32_t value_count, double *out, lvp_quality *quality);
+lvp_result lvp_evaluate_argument(const lvp_instruction *code, uint32_t length, const lvp_value *values,
+                                 uint32_t count, double argument, double *out, lvp_quality *quality);
 /* The binary package loader is optional; generated-C device builds do not link it. */
 typedef struct lvp_package lvp_package;
 lvp_package *lvp_package_load(const uint8_t *bytes, size_t size, char *error, size_t error_size);
-/* Bundle v1: SDK ABI 1 / LVGL 9.5.0 / length + CRC; authenticity is the product transport responsibility. */
+/* Bundle v1: SDK ABI 1/2 / LVGL 9.5.0 / length + CRC; authenticity is the product transport responsibility.
+ */
 lvp_package *lvp_bundle_load(const uint8_t *bytes, size_t size, char *error, size_t error_size);
 const lvp_schema *lvp_package_schema(const lvp_package *package);
 void lvp_package_free(lvp_package *package);

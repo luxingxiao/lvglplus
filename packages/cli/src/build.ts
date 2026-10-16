@@ -63,6 +63,12 @@ export async function buildNative(
   target?: string,
 ): Promise<string> {
   const output = await generateProject(project, undefined, target);
+  const fonts = JSON.parse(
+    await run(process.execPath, [
+      path.join(repositoryRoot, "scripts/prepare_fonts.mjs"),
+      project.root,
+    ]),
+  ) as string[];
   const buildDir = generated
     ? path.join(project.root, ".lvglplus/native-generated")
     : path.join(repositoryRoot, "build/native");
@@ -73,6 +79,7 @@ export async function buildNative(
     buildDir,
     "-DCMAKE_BUILD_TYPE=Debug",
     "-DBUILD_TESTING=OFF",
+    `-DLVP_FONT_SOURCES=${fonts.join(";")}`,
     `-DLVP_CUSTOM_SOURCES=${(
       await Promise.all(
         (project.manifest.native?.sources ?? []).map(async (name) => {

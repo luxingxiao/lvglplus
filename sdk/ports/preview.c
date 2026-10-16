@@ -18,6 +18,10 @@ int lvp_preview_load(const uint8_t *bytes, uint32_t length) {
     uint32_t i;
     if (!initialized) {
         lv_init();
+#ifdef LVP_FONTS
+        extern void lvp_register_project_fonts(void);
+        lvp_register_project_fonts();
+#endif
 #ifdef LVP_CUSTOM
         lvp_register_custom_widgets();
 #endif
@@ -149,4 +153,12 @@ void lvp_preview_restart_animations(void) {
 
 int lvp_preview_hit_test(int32_t x, int32_t y) {
     return lvp_ui_hit_test(ui, x, y);
+}
+
+int lvp_preview_action(const char *action) {
+    return lvp_ui_action(ui, action);
+}
+
+int lvp_preview_command_number(const char *name, double argument) {
+    return lvp_command_number(context, name, argument);
 }

@@ -386,7 +386,10 @@ export async function serve(folder: string, port = 5178) {
   const watcher = watch(project.root, { recursive: true }, (_, filename) => {
     if (!filename) return;
     const changed = filename.replaceAll("\\", "/");
-    if (project.manifest.native?.sources.includes(changed)) {
+    if (
+      project.manifest.native?.sources.includes(changed) ||
+      project.manifest.fonts?.some((f) => f.file === changed)
+    ) {
       broadcast({
         type: "diagnostics",
         diagnostics: [
@@ -657,7 +660,8 @@ export async function serve(folder: string, port = 5178) {
       }
       if (
         url.pathname === "/runtime/lvp.wasm" &&
-        project.manifest.native?.sources.length
+        (project.manifest.native?.sources.length ||
+          project.manifest.fonts?.length)
       ) {
         const name = decodeURIComponent(url.pathname.slice("/runtime/".length));
         const file = await inside(runtimeDirectory(project), name);

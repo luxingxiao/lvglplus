@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "lvgl.h"
 #include "lvglplus_ui.h"
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,6 +65,10 @@ int main(int argc, char **argv) {
         return 2;
     }
     lv_init();
+#ifdef LVP_FONTS
+    extern void lvp_register_project_fonts(void);
+    lvp_register_project_fonts();
+#endif
 #ifdef LVP_CUSTOM
     {
         extern void lvp_register_custom_widgets(void);
@@ -125,6 +130,65 @@ int main(int argc, char **argv) {
         return 1;
     }
     lvp_ui_tick(ui, 0);
+    {
+        const char *steps = option(argc, argv, "--steps");
+        if (steps) {
+            FILE *file = fopen(steps, "rb");
+            char line[512];
+            uint64_t previous = 0;
+            if (!file) {
+                lvp_ui_destroy(ui);
+                lvp_destroy(context);
+                lvp_package_free(package);
+                return 2;
+            }
+            while (fgets(line, sizeof(line), file)) {
+                char *value = strchr(line, '\t');
+                int ok = 0;
+                if (value) {
+                    *value++ = 0;
+                    value[strcspn(value, "\r\n")] = 0;
+                    if (!strcmp(line, "tick")) {
+                        char *end;
+                        unsigned long long at = strtoull(value, &end, 10);
+                        if (value[0] >= '0' && value[0] <= '9' && !*end && at >= previous) {
+                            lvp_ui_tick(ui, (uint64_t)at);
+                            previous = (uint64_t)at;
+                            ok = 1;
+                        }
+                    } else if (!strcmp(line, "command")) {
+                        int32_t id = lvp_command(context, value);
+                        ok = id > 0 && lvp_command_state(context, (uint32_t)id) != LVP_COMMAND_FAILED;
+                    } else if (!strcmp(line, "number")) {
+                        char *arg = strchr(value, '\t');
+                        if (arg) {
+                            *arg++ = 0;
+                            char *end;
+                            double number = strtod(arg, &end);
+                            if (end != arg && !*end && isfinite(number)) {
+                                int32_t id = lvp_command_number(context, value, number);
+                                ok = id > 0 && lvp_command_state(context, (uint32_t)id) != LVP_COMMAND_FAILED;
+                            }
+                        }
+                    } else if (!strcmp(line, "input")) {
+                        int32_t id = lvp_ui_action(ui, value);
+                        ok = id > 0 && lvp_command_state(context, (uint32_t)id) != LVP_COMMAND_FAILED;
+                    }
+                }
+                if (!ok) {
+                    fprintf(stderr, "Invalid or failed deterministic step\n");
+                    fclose(file);
+                    lvp_ui_destroy(ui);
+                    lvp_destroy(context);
+                    lvp_package_free(package);
+                    return 2;
+                }
+            }
+            fclose(file);
+            if (now < previous)
+                now = previous;
+        }
+    }
     lvp_ui_tick(ui, now);
     if (output) {
         FILE *f = fopen(output, "wb");

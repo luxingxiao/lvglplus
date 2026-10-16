@@ -9,7 +9,7 @@ import {
 } from "../packages/cli/dist/data.js";
 import { readFile } from "node:fs/promises";
 const p = await loadProject(
-  new URL("../examples/vehicle", import.meta.url).pathname,
+  fileURLToPath(new URL("../examples/vehicle", import.meta.url)),
 );
 test("simulation respects declared types and signal boundary", () => {
   const events = simulate(p.ir, p.sources, 9000, 10000);
