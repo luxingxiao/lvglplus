@@ -19,6 +19,7 @@ import {
   generateC,
   encodePackage,
   flatten,
+  imageSources,
   type ProjectManifest,
   type ProjectIR,
   type Diagnostic,
@@ -126,43 +127,47 @@ export async function loadProject(folder: string) {
   if (!result.ir) throw new ProjectError(result.diagnostics);
   let assetTotal = 0,
     decodedTotal = 0;
-  for (const node of flatten(result.ir).filter(
-    (node) => node.kind === "image" && node.props.src,
-  )) {
-    try {
-      const filename = await inside(root, node.props.src.slice(2));
-      const info = await stat(filename);
-      if (
-        !info.isFile() ||
-        info.size > 2 * 1024 * 1024 ||
-        (assetTotal += info.size) > 8 * 1024 * 1024
-      )
-        throw new Error("PNG asset exceeds the preview resource budget");
-      const bytes = await readFile(filename);
-      if (
-        bytes.length < 24 ||
-        (decodedTotal += bytes.readUInt32BE(16) * bytes.readUInt32BE(20) * 4) >
-          64 * 1024 * 1024 ||
-        bytes.readUInt32BE(16) < 1 ||
-        bytes.readUInt32BE(20) < 1 ||
-        bytes.readUInt32BE(16) > 4096 ||
-        bytes.readUInt32BE(20) > 4096 ||
-        !bytes
-          .subarray(0, 8)
-          .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
-      )
-        throw new Error("Expected a PNG image");
-    } catch (error) {
-      throw new ProjectError([
-        {
-          ...node.loc,
-          severity: "error",
-          code: "RESOURCE",
-          message: (error as Error).message,
-        },
-      ]);
+  const checked = new Set<string>();
+  for (const node of flatten(result.ir))
+    for (const source of imageSources(node)) {
+      if (checked.has(source)) continue;
+      checked.add(source);
+      try {
+        const filename = await inside(root, source.slice(2));
+        const info = await stat(filename);
+        if (
+          !info.isFile() ||
+          info.size > 2 * 1024 * 1024 ||
+          (assetTotal += info.size) >
+            (manifest.limits?.resourceBytes ?? 8 * 1024 * 1024)
+        )
+          throw new Error("PNG asset exceeds the preview resource budget");
+        const bytes = await readFile(filename);
+        if (
+          bytes.length < 24 ||
+          (decodedTotal +=
+            bytes.readUInt32BE(16) * bytes.readUInt32BE(20) * 4) >
+            (manifest.limits?.decodedBytes ?? 64 * 1024 * 1024) ||
+          bytes.readUInt32BE(16) < 1 ||
+          bytes.readUInt32BE(20) < 1 ||
+          bytes.readUInt32BE(16) > 4096 ||
+          bytes.readUInt32BE(20) > 4096 ||
+          !bytes
+            .subarray(0, 8)
+            .equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+        )
+          throw new Error("Expected a PNG image");
+      } catch (error) {
+        throw new ProjectError([
+          {
+            ...node.loc,
+            severity: "error",
+            code: "RESOURCE",
+            message: (error as Error).message,
+          },
+        ]);
+      }
     }
-  }
   let sources: SourceConfig = {};
   if (manifest.sources)
     sources = JSON.parse(

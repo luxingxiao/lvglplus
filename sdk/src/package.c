@@ -105,7 +105,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
     s->width = count(&r, 4096);
     s->height = count(&r, 4096);
     s->initial_page = text(&r);
-    if ((s->version < 1 || s->version > 3) || !s->width || !s->height)
+    if ((s->version < 1 || s->version > 4) || !s->width || !s->height)
         r.failed = 1;
     s->signal_count = count(&r, LVP_SIGNAL_MAX);
     signals = memory(&r, s->signal_count * sizeof(*signals));
@@ -182,7 +182,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
         if (nodes[i].kind > (s->version >= 3 ? 12u : 8u) || (parent != UINT32_MAX && parent >= i) ||
             (parent == UINT32_MAX && nodes[i].kind != 0))
             r.failed = 1;
-        nodes[i].property_count = count(&r, 64);
+        nodes[i].property_count = count(&r, s->version >= 4 ? 640 : 64);
         props = memory(&r, nodes[i].property_count * sizeof(*props));
         nodes[i].properties = props;
         if (r.failed)
@@ -191,7 +191,7 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
             props[j].name = text(&r);
             props[j].value = text(&r);
         }
-        nodes[i].binding_count = count(&r, s->version >= 3 ? 146 : 6);
+        nodes[i].binding_count = count(&r, s->version >= 4 ? 148 : s->version >= 3 ? 146 : 6);
         bindings = memory(&r, nodes[i].binding_count * sizeof(*bindings));
         nodes[i].bindings = bindings;
         if (r.failed)
@@ -203,12 +203,14 @@ lvp_package *lvp_package_load(const uint8_t *data, size_t size, char *error, siz
             bindings[j].two_way = word(&r);
             bindings[j].format = text(&r);
             prop = bindings[j].property;
-            if (prop > (s->version >= 3 ? LVP_BIND_POINT_BASE + 127 : LVP_BIND_QUALITY) ||
+            if (prop > (s->version >= 4 ? LVP_BIND_PLAYING : s->version >= 3 ? LVP_BIND_POINT_BASE + 127 : LVP_BIND_QUALITY) ||
                 bindings[j].signal >= s->signal_count || bindings[j].two_way > 1) {
                 r.failed = 1;
                 break;
             }
             if ((prop == LVP_BIND_TEXT || prop == LVP_BIND_QUALITY) && kind != 1 && kind != 2 && kind != 8)
+                r.failed = 1;
+            if ((prop == LVP_BIND_SOURCE || prop == LVP_BIND_PLAYING) && (kind != 7 || signals[bindings[j].signal].type == LVP_STRING))
                 r.failed = 1;
             if (prop == LVP_BIND_VALUE && kind != 3 && kind != 4 && kind != 5 && kind != 8)
                 r.failed = 1;

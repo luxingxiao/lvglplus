@@ -81,7 +81,20 @@ export const bindingKinds = [
   "endAngle",
   "lineWidth",
   ...Array.from({ length: 64 }, (_, i) => [`p${i}x`, `p${i}y`]).flat(),
+  "source",
+  "playing",
 ];
+export function imageSources(node: {
+  props: Record<string, string>;
+}): string[] {
+  return [
+    ...new Set(
+      Object.entries(node.props)
+        .filter(([k]) => k === "src" || /^source\.\d+$/.test(k))
+        .map(([, v]) => v),
+    ),
+  ];
+}
 export interface FlatNode extends Omit<UINode, "children"> {
   parent: number;
 }

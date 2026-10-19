@@ -80,3 +80,5 @@ IR 含 formatVersion、name、lvglVersion、targets、signals、evaluationOrder�
 
 
 本轮通用声明式扩展：IR/包 v3、SDK ABI 2，兼容加载 v1/v2 包；新增图形、集合、数学、快照、动作、时钟和状态机见 [通用能力规范](declarative.md)。
+
+2026-10-19：新输出为 IR/包 v4、SDK ABI 3；工程入口仍 v1。图片资源表、序列、多关键帧、页面生命周期和显式容量参见 [资源与页面规范](media-and-pages.md)。旧段落的默认预算保持不变；字体注册上限已扩展为 64。

@@ -21,7 +21,7 @@ test("bounded collections, repeats, reductions, inline expressions and state/tim
   const result = probe();
   assert.deepEqual(result.diagnostics, []);
   const ir = result.ir;
-  assert.equal(ir.formatVersion, 3);
+  assert.equal(ir.formatVersion, 4);
   assert.equal(ir.program.clocks.length, 1);
   assert.equal(ir.program.actions.length, 3);
   assert.equal(ir.program.timers.length, 1);

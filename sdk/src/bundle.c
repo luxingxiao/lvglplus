@@ -10,8 +10,9 @@ lvp_package *lvp_bundle_load(const uint8_t *bytes, size_t size, char *error, siz
     size_t i;
     int bit;
     if (!bytes || size < 52 || memcmp(bytes, "LVPB", 4) || word(bytes + 4) != 1 ||
-        (word(bytes + 8) != 1 && word(bytes + 8) != 2) || word(bytes + 12) != 0x090500 ||
-        (word(bytes + 36) >= 3 && word(bytes + 8) != 2) || word(bytes + 16) != size - 32) {
+        (word(bytes + 8) != 1 && word(bytes + 8) != 2 && word(bytes + 8) != 3) || word(bytes + 12) != 0x090500 ||
+        (word(bytes + 36) == 3 && word(bytes + 8) != 2) ||
+        (word(bytes + 36) >= 4 && word(bytes + 8) != 3) || word(bytes + 16) != size - 32) {
         if (error && cap)
             snprintf(error, cap, "Incompatible bundle header");
         return NULL;

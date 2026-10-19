@@ -6,6 +6,26 @@
 extern "C" {
 #endif
 typedef struct lvp_ui lvp_ui;
+const char *lvp_ui_error(void);
+typedef enum { LVP_UI_CREATE, LVP_UI_ENTER, LVP_UI_LEAVE, LVP_UI_DESTROY } lvp_ui_lifecycle_event;
+/* Observers run synchronously; do not navigate, destroy or reload the UI in this callback. */
+typedef void (*lvp_ui_lifecycle_fn)(lvp_ui *, const char *, lvp_ui_lifecycle_event, void *);
+void lvp_ui_set_lifecycle(lvp_ui *ui, lvp_ui_lifecycle_fn callback, void *user);
+lvp_result lvp_ui_push(lvp_ui *ui, const char *page);
+lvp_result lvp_ui_back(lvp_ui *ui);
+uint32_t lvp_ui_resident_nodes(const lvp_ui *ui);
+typedef enum { LVP_FRAME_RGB565, LVP_FRAME_BGRA8888 } lvp_frame_format;
+/* Copies a complete frame on the UI thread; caller may release input after return.
+   A lazy/unloaded node returns NOT_FOUND. Previous frame survives allocation/validation failure. */
+lvp_result lvp_ui_frame(lvp_ui *ui, const char *node, const void *pixels, size_t length,
+                        uint32_t width, uint32_t height, uint32_t stride, lvp_frame_format format);
+typedef struct {
+    lvp_result (*open)(lvp_context *, lvp_ui *, void **state);
+    void (*tick)(lvp_context *, lvp_ui *, uint64_t now_ms, void *state);
+    void (*close)(lvp_context *, lvp_ui *, void *state);
+} lvp_application;
+/* Register before UI creation. The descriptor must outlive all views; each UI owns its state. */
+lvp_result lvp_register_application(const lvp_application *application);
 #define LVP_WIDGET_ABI 1
 /* Registry entries and names must outlive every UI. Register before creating any view.
    Return an lv_obj_t from create; LVGL delete events own widget-specific cleanup. */

@@ -1,18 +1,30 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include "graphics.h"
 #include "lvgl.h"
+#include "src/misc/cache/instance/lv_image_cache.h"
 #include "lvglplus_ui.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 typedef struct binding_state binding_state;
+typedef struct { uint64_t elapsed, previous; uint32_t frame; int playing, started;
+    lv_image_dsc_t image; uint8_t *pixels;
+} sequence_state;
+static const lvp_application *application;
+static char ui_error[256];
+const char *lvp_ui_error(void) { return ui_error; }
+lvp_result lvp_register_application(const lvp_application *app) {
+    if (!app || !app->open || !app->close || application) return LVP_TYPE;
+    application = app; return LVP_OK;
+}
 struct lvp_ui {
     lvp_context *context;
     const lvp_schema *schema;
     lv_display_t *display;
     lv_indev_t *input;
     lv_obj_t **objects, **labels;
+    uint32_t *roots;
     lv_obj_t *previous_screen;
     uint8_t *pixels, *draw_buffer;
     int owns_display, applying;
@@ -21,6 +33,13 @@ struct lvp_ui {
     uint64_t now, animation_epoch;
     int animation_started;
     binding_state *bindings;
+    sequence_state *sequences;
+    int32_t active_page;
+    uint32_t navigation[32], navigation_count;
+    lvp_ui_lifecycle_fn lifecycle;
+    void *lifecycle_user;
+    void *app_state;
+    int app_opened;
 };
 struct binding_state {
     lvp_ui *ui;
@@ -34,7 +53,7 @@ static uint32_t factory_count;
 static struct {
     const char *name;
     const void *font;
-} fonts[16];
+} fonts[64];
 static uint32_t font_count;
 lvp_result lvp_ui_register_widget(const lvp_widget_factory *factory) {
     uint32_t i;
@@ -55,7 +74,7 @@ lvp_result lvp_ui_register_font(const char *name, const void *value) {
     for (i = 0; i < font_count; i++)
         if (!strcmp(fonts[i].name, name))
             return LVP_ERROR;
-    if (font_count == 16)
+    if (font_count == 64)
         return LVP_FULL;
     fonts[font_count].name = name;
     fonts[font_count++].font = value;
@@ -176,13 +195,33 @@ static void format_value(char *out, size_t cap, const char *fmt, const lvp_value
     out[used] = 0;
 }
 static void property(lvp_ui *ui, uint32_t index, const char *name, const char *value);
+static int image_source(lvp_ui *ui, uint32_t index, double frame) {
+    char key[32];
+    const char *path;
+    if (!isfinite(frame) || frame < 0 || frame > 511 || floor(frame) != frame || !ui->objects[index]) return 0;
+    snprintf(key, sizeof(key), "source.%u", (unsigned)frame);
+    path = node_property(&ui->schema->nodes[index], key);
+    if (!path) return 0;
+    lv_image_set_src(ui->objects[index], path);
+    ui->sequences[index].frame = (uint32_t)frame;
+    return 1;
+}
 static void apply_binding(lvp_context *ctx, uint32_t signal, const lvp_value *value, void *user) {
     binding_state *b = user;
     lvp_ui *ui = b->ui;
     const lvp_binding_def *d = b->definition;
     lv_obj_t *obj = ui->objects[b->node];
     char text[384];
+    if (!obj) return;
     ui->applying++;
+    if (d->property == LVP_BIND_SOURCE || d->property == LVP_BIND_PLAYING) {
+        if (value->quality == LVP_VALID && isfinite(value->number)) {
+            if (d->property == LVP_BIND_SOURCE) image_source(ui, b->node, value->number);
+            else ui->sequences[b->node].playing = value->number != 0;
+        }
+        ui->applying--;
+        return;
+    }
     if (d->property >= LVP_BIND_X) {
         static const char *names[] = {"x",      "y",       "width", "height",     "rotation", "scaleX",
                                       "scaleY", "opacity", "bg",    "startAngle", "endAngle", "lineWidth"};
@@ -345,7 +384,10 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
         lv_obj_set_height(obj, size_value(value));
     else if (!strcmp(name, "bg")) {
         lv_obj_set_style_bg_color(obj, lv_color_hex(color(value)), 0);
-        lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
+        {
+            const char *opacity = node_property(&ui->schema->nodes[index], "bgOpacity");
+            lv_obj_set_style_bg_opa(obj, opacity ? (lv_opa_t)atoi(opacity) : LV_OPA_COVER, 0);
+        }
     } else if (!strcmp(name, "bgOpacity"))
         lv_obj_set_style_bg_opa(obj, (lv_opa_t)fmax(0, fmin(255, n)), 0);
     else if (!strcmp(name, "color")) {
@@ -388,6 +430,10 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
                                     : !strcmp(value, "right") ? LV_TEXT_ALIGN_RIGHT
                                                               : LV_TEXT_ALIGN_LEFT,
                                     0);
+    else if (!strcmp(name, "textMode") && ui->labels[index])
+        lv_label_set_long_mode(ui->labels[index], !strcmp(value,"clip") ? LV_LABEL_LONG_CLIP :
+            !strcmp(value,"ellipsis") ? LV_LABEL_LONG_DOT : !strcmp(value,"scroll") ? LV_LABEL_LONG_SCROLL :
+            !strcmp(value,"scroll-circular") ? LV_LABEL_LONG_SCROLL_CIRCULAR : LV_LABEL_LONG_WRAP);
     else if (!strcmp(name, "text") && ui->labels[index])
         lv_label_set_text(ui->labels[index], value);
     else if (!strcmp(name, "hidden") && !strcmp(value, "true"))
@@ -415,13 +461,32 @@ static void property(lvp_ui *ui, uint32_t index, const char *name, const char *v
             f->property(obj, name, value);
     }
 }
-static int make_objects(lvp_ui *ui) {
+static void release_page(lvp_ui *ui, uint32_t root) {
+    uint32_t i;
+    binding_state **link = &ui->bindings;
+    while (*link) {
+        binding_state *b = *link;
+        if (ui->roots[b->node] == root) {
+            if (b->subscription) lvp_unsubscribe(ui->context, b->subscription);
+            *link = b->next; free(b);
+        } else link = &b->next;
+    }
+    if (ui->objects[root]) {
+        if (ui->lifecycle) ui->lifecycle(ui, ui->schema->nodes[root].id, LVP_UI_DESTROY, ui->lifecycle_user);
+        lv_obj_delete(ui->objects[root]);
+    }
+    for (i = root; i < ui->schema->node_count; i++) if (ui->roots[i] == root) {
+        ui->objects[i] = ui->labels[i] = NULL;
+        if (ui->sequences[i].pixels) lv_image_cache_drop(&ui->sequences[i].image);
+        free(ui->sequences[i].pixels);
+        memset(&ui->sequences[i], 0, sizeof(sequence_state));
+    }
+}
+static int create_page(lvp_ui *ui, uint32_t root) {
     uint32_t i, j;
-    ui->objects = calloc(ui->schema->node_count, sizeof(lv_obj_t *));
-    ui->labels = calloc(ui->schema->node_count, sizeof(lv_obj_t *));
-    if (!ui->objects || !ui->labels)
-        return 0;
-    for (i = 0; i < ui->schema->node_count; i++) {
+    if (ui->objects[root]) return 1;
+    for (i = root; i < ui->schema->node_count; i++) {
+        if (ui->roots[i] != root) continue;
         const lvp_node_def *d = &ui->schema->nodes[i];
         lv_obj_t *parent = d->parent < 0 ? NULL : ui->objects[d->parent];
         lv_obj_t *obj = NULL;
@@ -469,9 +534,9 @@ static int make_objects(lvp_ui *ui) {
             default:
                 return 0;
             }
-        if (!obj)
-            return 0;
+        if (!obj) { snprintf(ui_error, sizeof(ui_error), "Cannot create node %s", d->id); return 0; }
         ui->objects[i] = obj;
+        ui->sequences[i].playing = 1;
         if (d->kind == 0) {
             lv_obj_set_style_border_width(obj, 0, 0);
             lv_obj_set_style_pad_all(obj, 0, 0);
@@ -515,8 +580,7 @@ static int make_objects(lvp_ui *ui) {
                 for (f = 0; f < font_count; f++)
                     if (!strcmp(fonts[f].name, d->properties[j].value))
                         found = 1;
-                if (!found)
-                    return 0;
+                if (!found) { snprintf(ui_error, sizeof(ui_error), "Unregistered font %s on %s", d->properties[j].value, d->id); return 0; }
             }
             property(ui, i, k, d->properties[j].value);
         }
@@ -557,7 +621,8 @@ static int make_objects(lvp_ui *ui) {
             if (b->definition->two_way)
                 lv_obj_add_event_cb(obj, write_binding, LV_EVENT_VALUE_CHANGED, b);
         }
-        if (d->kind == 2 || d->kind == 8) {
+        if (d->kind == 2 || d->kind == 8 || (d->command && d->command[0])) {
+            lv_obj_add_flag(obj, LV_OBJ_FLAG_CLICKABLE);
             binding_state *b = calloc(1, sizeof(*b));
             if (!b)
                 return 0;
@@ -568,6 +633,26 @@ static int make_objects(lvp_ui *ui) {
             lv_obj_add_event_cb(obj, click_node, LV_EVENT_CLICKED, b);
         }
     }
+    if (ui->lifecycle) ui->lifecycle(ui, ui->schema->nodes[root].id, LVP_UI_CREATE, ui->lifecycle_user);
+    return 1;
+}
+static int make_objects(lvp_ui *ui) {
+    uint32_t i;
+    ui->active_page = -1;
+    ui->objects = calloc(ui->schema->node_count, sizeof(lv_obj_t *));
+    ui->labels = calloc(ui->schema->node_count, sizeof(lv_obj_t *));
+    ui->sequences = calloc(ui->schema->node_count, sizeof(sequence_state));
+    ui->roots = calloc(ui->schema->node_count, sizeof(uint32_t));
+    ui_error[0] = 0;
+    if (!ui->objects || !ui->labels || !ui->sequences || !ui->roots) { strcpy(ui_error, "Object table allocation failed"); return 0; }
+    for (i = 0; i < ui->schema->node_count; i++) {
+        int32_t parent = ui->schema->nodes[i].parent;
+        if (parent >= (int32_t)i) { strcpy(ui_error, "Parent must precede its child"); return 0; }
+        ui->roots[i] = parent < 0 ? i : ui->roots[parent];
+    }
+    for (i = 0; i < ui->schema->node_count; i++)
+        if (ui->schema->nodes[i].parent < 0 &&
+            (!node_property(&ui->schema->nodes[i], "lazy") || strcmp(node_property(&ui->schema->nodes[i], "lazy"), "true")) && !create_page(ui, i)) return 0;
     return lvp_ui_navigate(ui, ui->schema->initial_page) == LVP_OK;
 }
 static lvp_ui *base_ui(lvp_context *ctx) {
@@ -614,6 +699,10 @@ lvp_ui *lvp_ui_create(lvp_context *ctx) {
         lvp_ui_destroy(ui);
         return NULL;
     }
+    if (application) {
+        if (application->open(ctx, ui, &ui->app_state) != LVP_OK) { lvp_ui_destroy(ui); return NULL; }
+        ui->app_opened = 1;
+    }
     return ui;
 }
 lvp_ui *lvp_ui_attach(lvp_context *ctx, void *display) {
@@ -635,6 +724,10 @@ lvp_ui *lvp_ui_attach(lvp_context *ctx, void *display) {
         lvp_ui_destroy(ui);
         return NULL;
     }
+    if (application) {
+        if (application->open(ctx, ui, &ui->app_state) != LVP_OK) { lvp_ui_destroy(ui); return NULL; }
+        ui->app_opened = 1;
+    }
     return ui;
 }
 void lvp_ui_destroy(lvp_ui *ui) {
@@ -642,6 +735,13 @@ void lvp_ui_destroy(lvp_ui *ui) {
     binding_state *b;
     if (!ui)
         return;
+    if (ui->lifecycle && ui->objects) {
+        if (ui->active_page >= 0 && ui->objects[ui->active_page])
+            ui->lifecycle(ui, ui->schema->nodes[ui->active_page].id, LVP_UI_LEAVE, ui->lifecycle_user);
+        for (i = 0; i < ui->schema->node_count; i++) if (ui->schema->nodes[i].parent < 0 && ui->objects[i])
+            ui->lifecycle(ui, ui->schema->nodes[i].id, LVP_UI_DESTROY, ui->lifecycle_user);
+    }
+    if (ui->app_opened) application->close(ui->context, ui, ui->app_state);
     b = ui->bindings;
     while (b) {
         binding_state *next = b->next;
@@ -661,16 +761,75 @@ void lvp_ui_destroy(lvp_ui *ui) {
             if (ui->schema->nodes[i].parent < 0 && ui->objects[i])
                 lv_obj_delete(ui->objects[i]);
     }
+    if (ui->sequences) for (i = 0; i < ui->schema->node_count; i++) {
+        if (ui->sequences[i].pixels) lv_image_cache_drop(&ui->sequences[i].image);
+        free(ui->sequences[i].pixels);
+    }
+    free(ui->roots);
+    free(ui->sequences);
     free(ui->objects);
     free(ui->labels);
     free(ui->pixels);
     free(ui->draw_buffer);
     free(ui);
 }
+static double ease_value(double t, int easing, double x1, double y1, double x2, double y2) {
+    if (easing == 1) return t*t*(3-2*t);
+    if (easing == 2) return t < 1 ? 0 : 1;
+    if (easing == 3) return t*t;
+    if (easing == 4) return 1-(1-t)*(1-t);
+    if (easing == 5) {
+        double low=0,high=1,u=t;
+        int i;
+        for(i=0;i<32;i++) {
+            double v=1-u,x=3*v*v*u*x1+3*v*u*u*x2+u*u*u;
+            if(x<t)low=u;else high=u;
+            u=(low+high)*0.5;
+        }
+        return 3*(1-u)*(1-u)*u*y1+3*(1-u)*u*u*y2+u*u*u;
+    }
+    return t;
+}
+static int timeline_value(const char *data, uint64_t elapsed, double *result) {
+    const char *first=strchr(data,';'), *cursor;
+    int repeat, easing=0;
+    long parsed_repeat=strtol(data,NULL,10);
+    if(parsed_repeat < -1 || parsed_repeat > 1000000) return 0;
+    repeat=(int)parsed_repeat;
+    double end=0, at=0, value=0, previous_at=0, previous_value=0,x1,y1,x2,y2;
+    if (!first || repeat < -1) return 0;
+    for(cursor=first;cursor;cursor=strchr(cursor+1,';')) end=strtod(cursor+1,NULL);
+    if(!isfinite(end) || end<1 || end>3600000) return 0;
+    if(repeat<0 || (double)elapsed < end*(repeat+1.0)) elapsed=(uint64_t)fmod((double)elapsed,end);
+    else elapsed=(uint64_t)end;
+    for(cursor=first;cursor;cursor=strchr(cursor+1,';')) {
+        if(sscanf(cursor+1,"%lf,%lf,%d,%lf,%lf,%lf,%lf",&at,&value,&easing,&x1,&y1,&x2,&y2)!=7) return 0;
+        if(!isfinite(at) || !isfinite(value) || at<previous_at || at>end || fabs(value)>32767 ||
+           easing<0 || easing>5 || !isfinite(x1) || !isfinite(y1) || !isfinite(x2) || !isfinite(y2) ||
+           x1<0 || x1>1 || x2<0 || x2>1 || fabs(y1)>8 || fabs(y2)>8) return 0;
+        if(at>=(double)elapsed) {
+            double t=at==previous_at?1:((double)elapsed-previous_at)/(at-previous_at);
+            *result=previous_value+(value-previous_value)*ease_value(t,easing,x1,y1,x2,y2);return 1;
+        }
+        previous_at=at;previous_value=value;
+    }
+    *result=value;return 1;
+}
 void lvp_ui_tick(lvp_ui *ui, uint64_t now) {
     if (!ui)
         return;
     ui->now = now;
+    if (ui->app_opened && application->tick) application->tick(ui->context, ui, now, ui->app_state);
+    {
+        uint32_t i, page = 0;
+        for (i = 0; i < ui->schema->node_count; i++) if (ui->schema->nodes[i].parent < 0) {
+            const char *selector = node_property(&ui->schema->nodes[i], "pageSignal");
+            const lvp_value *v = selector ? lvp_get(ui->context, (uint32_t)atoi(selector)) : NULL;
+            if (v && v->quality == LVP_VALID && v->number == page && ui->active_page != (int32_t)i)
+                lvp_ui_navigate(ui, ui->schema->nodes[i].id);
+            page++;
+        }
+    }
     if (ui->owns_display) {
         clock_ms = (uint32_t)now;
         lv_tick_set_cb(tick_clock);
@@ -683,7 +842,31 @@ void lvp_ui_tick(lvp_ui *ui, uint64_t now) {
         uint32_t i, j;
         for (i = 0; i < ui->schema->node_count; i++) {
             const lvp_node_def *d = &ui->schema->nodes[i];
-            for (j = 0; j < d->property_count; j++)
+            const char *sequence = node_property(d, "sequence");
+            if (!ui->objects[i]) continue;
+            if (sequence && d->kind == 7) {
+                int ms, repeat;
+                uint32_t frames = 0, k;
+                sequence_state *state = &ui->sequences[i];
+                for (k = 0; k < d->property_count; k++) if (!strncmp(d->properties[k].name, "source.", 7)) frames++;
+                if (state->started && now < state->previous) state->elapsed = 0;
+                if (state->started && now >= state->previous && state->playing && lv_obj_is_visible(ui->objects[i])) state->elapsed += now - state->previous;
+                state->started = 1; state->previous = now;
+                if (frames && sscanf(sequence, "%d,%d", &ms, &repeat) == 2 && ms > 0) {
+                    uint64_t frame = state->elapsed / (uint32_t)ms;
+                    if (repeat >= 0 && frame / frames > (uint32_t)repeat) frame = frames - 1;
+                    else frame %= frames;
+                    image_source(ui, i, (double)frame);
+                }
+            }
+            for (j = 0; j < d->property_count; j++) {
+                if (!strncmp(d->properties[j].name, "timeline.", 9)) {
+                    double v; char text[48];
+                    if (timeline_value(d->properties[j].value, now-ui->animation_epoch, &v)) {
+                        snprintf(text,sizeof(text),"%.6f",v);
+                        property(ui,i,d->properties[j].name+9,text);
+                    }
+                }
                 if (!strncmp(d->properties[j].name, "anim.", 5)) {
                     int from, to, duration, delay, repeat, easing;
                     uint64_t elapsed = now - ui->animation_epoch, cycle;
@@ -706,9 +889,22 @@ void lvp_ui_tick(lvp_ui *ui, uint64_t now) {
                     snprintf(value, sizeof(value), "%d", (int)lround(from + (to - from) * t));
                     property(ui, i, d->properties[j].name + 5, value);
                 }
+            }
         }
     }
     lvp_tick(ui->context, now);
+    {
+        int32_t highest = -1, priority = -1;
+        uint32_t i;
+        for (i = 0; i < ui->schema->node_count; i++) if (ui->objects[i] && lv_obj_is_visible(ui->objects[i]) &&
+            lv_obj_get_screen(ui->objects[i]) == lv_display_get_screen_active(ui->display)) {
+            const char *modal = node_property(&ui->schema->nodes[i], "modal");
+            const char *value = node_property(&ui->schema->nodes[i], "priority");
+            int n = value ? atoi(value) : 0;
+            if (modal && !strcmp(modal, "true") && n >= priority) { highest = (int32_t)i; priority = n; }
+        }
+        if (highest >= 0) lv_obj_move_to_index(ui->objects[highest], -1);
+    }
     lv_timer_handler();
     lv_refr_now(ui->display);
 }
@@ -734,14 +930,24 @@ lvp_result lvp_ui_navigate(lvp_ui *ui, const char *page) {
         return LVP_NOT_FOUND;
     for (i = 0; i < ui->schema->node_count; i++)
         if (ui->schema->nodes[i].parent < 0 && !strcmp(ui->schema->nodes[i].id, page)) {
+            int32_t old = ui->active_page;
+            if (old == (int32_t)i) return LVP_OK;
+            if (!create_page(ui, i)) { release_page(ui, i); return LVP_ERROR; }
+            if (old >= 0 && ui->lifecycle) ui->lifecycle(ui, ui->schema->nodes[old].id, LVP_UI_LEAVE, ui->lifecycle_user);
             lv_screen_load(ui->objects[i]);
+            ui->active_page = (int32_t)i;
+            if (ui->lifecycle) ui->lifecycle(ui, page, LVP_UI_ENTER, ui->lifecycle_user);
+            if (old >= 0) {
+                const char *retain = node_property(&ui->schema->nodes[old], "retain");
+                if (retain && !strcmp(retain, "false")) release_page(ui, (uint32_t)old);
+            }
             return LVP_OK;
         }
     return LVP_NOT_FOUND;
 }
 lvp_result lvp_ui_bounds(lvp_ui *ui, uint32_t node, int32_t *x, int32_t *y, int32_t *w, int32_t *h) {
     lv_area_t a;
-    if (!ui || node >= ui->schema->node_count || !x || !y || !w || !h)
+    if (!ui || node >= ui->schema->node_count || !x || !y || !w || !h || !ui->objects[node])
         return LVP_RANGE;
     lv_obj_update_layout(ui->objects[node]);
     lv_obj_get_coords(ui->objects[node], &a);
@@ -807,10 +1013,78 @@ int32_t lvp_ui_action(lvp_ui *ui, const char *action) {
     if (!ui || !action || strlen(action) > 24)
         return LVP_NOT_FOUND;
     snprintf(key, sizeof(key), "input.%s", action);
+    {
+        int32_t modal = -1, priority = -1;
+        for (i = 0; i < ui->schema->node_count; i++) if (ui->objects[i] && lv_obj_is_visible(ui->objects[i]) &&
+            lv_obj_get_screen(ui->objects[i]) == lv_display_get_screen_active(ui->display)) {
+            const char *m = node_property(&ui->schema->nodes[i], "modal"), *p = node_property(&ui->schema->nodes[i], "priority");
+            int n = p ? atoi(p) : 0;
+            if (m && !strcmp(m, "true") && n >= priority) { modal = (int32_t)i; priority = n; }
+        }
+        if (modal >= 0) {
+            const char *command = node_property(&ui->schema->nodes[modal], key);
+            return command ? lvp_command(ui->context, command) : LVP_NOT_FOUND;
+        }
+    }
     for (i = 0; i < ui->schema->node_count; i++)
         if (ui->schema->nodes[i].parent < 0 && ui->objects[i] == lv_display_get_screen_active(ui->display)) {
             const char *command = node_property(&ui->schema->nodes[i], key);
             return command ? lvp_command(ui->context, command) : LVP_NOT_FOUND;
         }
     return LVP_NOT_FOUND;
+}
+
+void lvp_ui_set_lifecycle(lvp_ui *ui, lvp_ui_lifecycle_fn fn, void *user) {
+    if (ui) { ui->lifecycle = fn; ui->lifecycle_user = user; }
+}
+lvp_result lvp_ui_push(lvp_ui *ui, const char *page) {
+    int32_t old;
+    lvp_result result;
+    if (!ui) return LVP_TYPE;
+    if (ui->navigation_count == 32) return LVP_FULL;
+    old = ui->active_page;
+    result = lvp_ui_navigate(ui, page);
+    if (result == LVP_OK && old >= 0 && old != ui->active_page) ui->navigation[ui->navigation_count++] = (uint32_t)old;
+    return result;
+}
+lvp_result lvp_ui_back(lvp_ui *ui) {
+    lvp_result result;
+    if (!ui || !ui->navigation_count) return LVP_NOT_FOUND;
+    result = lvp_ui_navigate(ui, ui->schema->nodes[ui->navigation[ui->navigation_count - 1]].id);
+    if (result == LVP_OK) ui->navigation_count--;
+    return result;
+}
+uint32_t lvp_ui_resident_nodes(const lvp_ui *ui) {
+    uint32_t i, total = 0;
+    if (ui && ui->objects) for (i = 0; i < ui->schema->node_count; i++) if (ui->objects[i]) total++;
+    return total;
+}
+
+lvp_result lvp_ui_frame(lvp_ui *ui, const char *node, const void *pixels, size_t length,
+                        uint32_t width, uint32_t height, uint32_t stride, lvp_frame_format format) {
+    uint32_t i, y, bpp = format == LVP_FRAME_RGB565 ? 2 : 4;
+    size_t row, bytes;
+    uint8_t *copy;
+    sequence_state *state;
+    if (!ui || !node || !pixels || width < 1 || height < 1 || width > 4096 || height > 4096 ||
+        (format != LVP_FRAME_RGB565 && format != LVP_FRAME_BGRA8888)) return LVP_TYPE;
+    row = (size_t)width * bpp; bytes = row * height;
+    if (stride < row || (height > 1 && (size_t)stride > (SIZE_MAX - row) / (height - 1)) ||
+        (size_t)stride * (height - 1) + row > length) return LVP_RANGE;
+    for (i = 0; i < ui->schema->node_count; i++) if (!strcmp(ui->schema->nodes[i].id, node)) break;
+    if (i == ui->schema->node_count || !ui->objects[i]) return LVP_NOT_FOUND;
+    if (ui->schema->nodes[i].kind != 7) return LVP_TYPE;
+    copy = malloc(bytes);
+    if (!copy) return LVP_FULL;
+    for (y = 0; y < height; y++) memcpy(copy + row*y, (const uint8_t *)pixels + (size_t)stride*y, row);
+    state = &ui->sequences[i];
+    lv_image_cache_drop(&state->image);
+    free(state->pixels); state->pixels = copy;
+    memset(&state->image, 0, sizeof(state->image));
+    state->image.header.magic = LV_IMAGE_HEADER_MAGIC;
+    state->image.header.cf = format == LVP_FRAME_RGB565 ? LV_COLOR_FORMAT_RGB565 : LV_COLOR_FORMAT_ARGB8888;
+    state->image.header.w = width; state->image.header.h = height; state->image.header.stride = (uint32_t)row;
+    state->image.data_size = (uint32_t)bytes; state->image.data = copy;
+    lv_image_set_src(ui->objects[i], &state->image);
+    return LVP_OK;
 }

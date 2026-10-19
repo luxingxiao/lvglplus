@@ -1,0 +1,9 @@
+<dashboard version="1" start="home">
+<page id="home" width="80" height="60" bg="#000000" pageSignal="page" lazy="true" retain="false">
+<image id="selected" x="0" y="0"><source src="A:assets/red.png"/><source src="A:assets/green.png"/><bind property="source" signal="selection"/></image>
+<image id="sequence" x="12" y="0"><source src="A:assets/red.png"/><source src="A:assets/green.png"/><source src="A:assets/blue.png"/><sequence frameMs="50" repeat="-1"/><bind property="playing" signal="playing"/></image>
+<panel x="24" y="0" width="8" height="8" bgOpacity="0" bg="#ffffff"/>
+<panel id="keyframed" x="0" y="24" width="8" height="8" bg="#ffffff"><keyframes property="x" repeat="-1"><key atMs="0" value="0"/><key atMs="100" value="40" easing="cubic-bezier" control="0.25,0.1,0.25,1"/><key atMs="200" value="0" easing="ease-in-out"/></keyframes></panel>
+</page>
+<page id="second" width="80" height="60" bg="#112233" pageSignal="page" lazy="true" retain="false"><text id="message" text="Other"/></page>
+</dashboard>

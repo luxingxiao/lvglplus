@@ -2,6 +2,7 @@
 #include "lvgl.h"
 #include "lvglplus_ui.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 static lvp_package *package;
 static lvp_context *context;
@@ -57,7 +58,7 @@ int lvp_preview_load(const uint8_t *bytes, uint32_t length) {
     if (!next_ui) {
         lvp_destroy(next_context);
         lvp_package_free(next);
-        strcpy(last_error, "Cannot create LVGL view");
+        snprintf(last_error, sizeof(last_error), "Cannot create LVGL view: %s", lvp_ui_error());
         return -1;
     }
     lvp_ui_destroy(ui);
@@ -161,4 +162,12 @@ int lvp_preview_action(const char *action) {
 
 int lvp_preview_command_number(const char *name, double argument) {
     return lvp_command_number(context, name, argument);
+}
+
+int lvp_preview_navigate(const char *page) { return lvp_ui_navigate(ui, page); }
+int lvp_preview_push(const char *page) { return lvp_ui_push(ui, page); }
+int lvp_preview_back(void) { return lvp_ui_back(ui); }
+uint32_t lvp_preview_resident_nodes(void) { return lvp_ui_resident_nodes(ui); }
+int lvp_preview_frame(const char *node, const void *pixels, uint32_t length, uint32_t width, uint32_t height, uint32_t stride, uint32_t format) {
+    return lvp_ui_frame(ui, node, pixels, length, width, height, stride, (lvp_frame_format)format);
 }

@@ -34,7 +34,7 @@ pnpm dev
 pnpm test:declarative
 ```
 
-公开渲染测试使用独立编写的 `tests/fixtures/graphics` 几何夹具。应用级验证代码仅保留在本地忽略目录，不随仓库分发。生成产物使用 IR v3 / SDK ABI 2，更新后请重新构建 SDK。
+公开渲染测试使用独立编写的 `tests/fixtures/graphics` 几何夹具。应用级验证代码仅保留在本地忽略目录，不随仓库分发。生成产物使用 IR v4 / SDK ABI 3，更新后请重新构建 SDK。
 
 ## 基础能力（0.2.0）
 

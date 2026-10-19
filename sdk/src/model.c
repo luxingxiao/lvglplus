@@ -223,7 +223,7 @@ lvp_context *lvp_create(const lvp_schema *s, const lvp_hal *config) {
     lvp_context *c;
     uint32_t i;
     uint8_t seen[LVP_SIGNAL_MAX] = {0};
-    if (!s || (s->version < 1 || s->version > 3) || s->signal_count > LVP_SIGNAL_MAX ||
+    if (!s || (s->version < 1 || s->version > 4) || s->signal_count > LVP_SIGNAL_MAX ||
         (s->signal_count && (!s->signals || !s->evaluation_order)) || s->command_count > 256 ||
         (s->command_count && !s->commands) || s->node_count > LVP_NODE_MAX || (s->node_count && !s->nodes))
         return NULL;

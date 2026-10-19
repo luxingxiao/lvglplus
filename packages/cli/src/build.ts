@@ -71,7 +71,7 @@ export async function buildNative(
   ) as string[];
   const buildDir = generated
     ? path.join(project.root, ".lvglplus/native-generated")
-    : path.join(repositoryRoot, "build/native");
+    : path.join(project.root, ".lvglplus/native");
   await run("cmake", [
     "-S",
     repositoryRoot,

@@ -34,7 +34,7 @@ General-purpose graphics, dynamic geometry bindings, bounded collections, shared
 pnpm test:declarative
 ```
 
-Public rendering tests use the independently authored geometry fixture in `tests/fixtures/graphics`. Application-specific validation sources are kept locally outside version control and are not distributed. Generated artifacts use IR v3 / SDK ABI 2; rebuild the SDK when updating.
+Public rendering tests use the independently authored geometry fixture in `tests/fixtures/graphics`. Application-specific validation sources are kept locally outside version control and are not distributed. Generated artifacts use IR v4 / SDK ABI 3; rebuild the SDK when updating.
 
 ## Capabilities (0.2.0)
 
