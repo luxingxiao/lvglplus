@@ -1,0 +1,24 @@
+{
+  "cases": [
+    {
+      "name": "initial",
+      "atMs": 0,
+      "expect": { "load": 62, "power": 775, "temperature": 42, "running": true },
+      "reference": "baselines/initial.png"
+    },
+    {
+      "name": "thermal-overload",
+      "atMs": 1000,
+      "values": { "stress": true },
+      "expect": { "load": 94, "power": 1175, "temperature": 86, "warning": true },
+      "reference": "baselines/overload.png"
+    },
+    {
+      "name": "draft-profile",
+      "atMs": 1500,
+      "values": { "economy": true },
+      "expect": { "economy": true, "plant.ms": 1500, "warning": false },
+      "reference": "baselines/draft.png"
+    }
+  ]
+}

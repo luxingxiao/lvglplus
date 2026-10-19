@@ -28,7 +28,8 @@
     "test:serial": "python3 tests/test_serial.py",
     "desktop": "pnpm --filter @lvglplus/desktop start",
     "desktop:pack": "pnpm --filter @lvglplus/desktop dist",
-    "test:declarative": "node tests/declarative-parity.mjs"
+    "test:declarative": "node tests/declarative-parity.mjs",
+    "test:energy": "node tests/energy-console-parity.mjs"
   },
   "devDependencies": {
     "@types/node": "24.10.0",

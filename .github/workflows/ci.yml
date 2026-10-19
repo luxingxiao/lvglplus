@@ -35,7 +35,7 @@ jobs:
       - run: python3 scripts/bootstrap.py --wasm
       - run: pnpm build:wasm && pnpm build
       - run: pnpm test && pnpm test:render && pnpm test:extensions && pnpm test:dbc && pnpm test:serial
-      - run: pnpm test:declarative
+      - run: pnpm test:declarative && pnpm test:energy
       - name: Compile Linux DRM production target
         run: |
           sudo apt-get update && sudo apt-get install -y libdrm-dev
@@ -61,3 +61,4 @@ jobs:
           path: |
             build/parity
             tests/fixtures/graphics/.lvglplus/parity
+            examples/energy-console/.lvglplus/parity

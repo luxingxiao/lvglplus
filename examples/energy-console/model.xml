@@ -1,0 +1,33 @@
+<model version="1">
+  <signal name="running" type="boolean" initial="true"/>
+  <signal name="rate" type="number" initial="1"/>
+  <signal name="direction" type="integer" initial="1"/>
+  <signal name="stress" type="boolean" initial="false"/>
+  <signal name="economy" type="boolean" initial="false"/>
+  <clock name="plant" running="running" rate="rate"/>
+  <computed name="load" expression="stress ? 94 : 62 + 16*sin(plant.ms/2000)"/>
+  <computed name="power" expression="load*12.5"/>
+  <computed name="temperature" expression="stress ? 86 : 42 + 6*sin(plant.ms/3000)"/>
+  <computed name="warning" type="boolean" expression="temperature&gt;75"/>
+  <computed name="gaugeEnd" expression="135+load*2.7"/>
+  <computed name="spin" expression="direction*plant.ms*0.035"/>
+  <computed name="rpm" expression="running ? (stress ? 1480 : 960+120*sin(plant.ms/2000))*rate : 0"/>
+  <computed name="stateColor" expression="warning ? 0xffa663 : 0x67e8c2"/>
+  <collection name="channels" capacity="4">
+    <computed name="load" expression="clamp(load - ${index}*9 + 6*sin(plant.ms/1500+${index}),0,100)"/>
+    <computed name="temperature" expression="temperature + ${index}*1.5"/>
+  </collection>
+  <action name="pause"><set target="running" expression="!running"/></action>
+  <action name="speed"><set target="rate" expression="rate==1 ? 2 : 1"/></action>
+  <action name="reverse"><set target="direction" expression="-direction"/></action>
+  <action name="stress"><set target="stress" expression="!stress"/></action>
+  <action name="quality"><set target="economy" expression="!economy"/></action>
+  <action name="reset">
+    <set target="plant.ms" expression="0"/>
+    <set target="running" expression="true"/>
+    <set target="rate" expression="1"/>
+    <set target="direction" expression="1"/>
+    <set target="stress" expression="false"/>
+    <set target="economy" expression="false"/>
+  </action>
+</model>

@@ -42,3 +42,5 @@
 远端跨系统工具链/核心与 Linux 图形验证、DRM 目标编译已有通过证据，见 [本轮验证记录](verification-declarative.md)。DRM 实屏、设备驱动与具体 MCU 仍未验收；vcan/CAN FD 软件链路亦已在补齐 runner 内核模块后通过，仍不等于真实收发器和车辆验收。
 
 平滑 sector 覆盖缓存、角向/径向衰减、环形内圈与精度预算已实现；属性和内存契约见 [声明式文档](declarative.md)。真实硬件的内存与帧率尚待测量。
+
+公开复杂示例新增 [能源控制台](../../examples/energy-console/README.md)，七类确定性场景验证组合渲染和交互；不作为真实能源系统或硬件适配验收。

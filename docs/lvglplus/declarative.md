@@ -27,7 +27,7 @@ Studio 聚焦画布后可向工程声明的语义输入发送事件。真实 LVG
 | sector | 椭圆扇区；`startAngle/endAngle` 为度，0 度向右、正角顺时针；跨度限制为正负 360 度；可设 `fade="true"` 做角向拖尾 |
 | grid | `gridX/gridY` 为间距，最小 2px；`color/lineWidth` 控制网格 |
 
-图形使用 `color` 作轮廓色，`bg` 作多边形/扇区填充色；`lineWidth` 最大 64px。路径支持 `dashLength/dashGap`。扇区按最多 72 段三角形绘制。几何保存在适配层，不进入 LVGL-free 数据核心。
+图形使用 `color` 作轮廓色，`bg` 作多边形/扇区填充色；`lineWidth` 最大 64px。路径支持 `dashLength/dashGap`。扇区使用平滑 A8 覆盖缓存，见文末资源契约。几何保存在适配层，不进入 LVGL-free 数据核心。
 
 通用静态属性新增：`rotation`、`scaleX/scaleY`、`pivotX/pivotY`、`clip`、`bgOpacity`、`bgEnd`、`gradientDirection`。缩放采用 LVGL 的 256=1× 单位；旋转单位为度。透明组合使用 `bgOpacity="0"`，组合 panel 实现分层；子元素顺序决定绘制顺序，`clip="false"` 显式允许溢出。
 
@@ -192,3 +192,7 @@ pnpm test:declarative
 ```
 
 示意中的 clock 必须在 Model 中声明。扫描命中、目标回波寿命属于应用 Model 逻辑，本次没有引入专用雷达业务控件或声称已实现回波模型。完整物理发光/模糊、任意遮罩和真实设备帧率仍不在本次验收范围。
+
+## 完整组合示例
+
+[微电网能源控制台](../../examples/energy-console/README.md) 将环形渐变、旋转图层、动态曲线、集合、裁剪、告警和语义输入组合为 1024×600 的完整界面，不含应用 C 源码。运行 `pnpm test:energy` 可验证七类场景三路径一致性。

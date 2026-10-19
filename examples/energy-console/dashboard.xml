@@ -1,0 +1,101 @@
+<dashboard version="1">
+  <inputs><key action="confirm" command="pause"/><key action="right" command="speed"/><key action="left" command="reverse"/><key action="up" command="stress"/><key action="down" command="quality"/><key action="back" command="reset"/></inputs>
+  <styles>
+    <style name="muted" color="#849aae" fontSize="14"/>
+    <style name="card" bg="#101e2b" bgEnd="#132633" gradientDirection="vertical" radius="16" border="1" borderColor="#243748"/>
+    <style name="control" bg="#1c3040" color="#d8e9f5" radius="10" border="1" borderColor="#30495b"/>
+  </styles>
+  <page id="home" bg="#07111c">
+    <text id="brand" x="24" y="18" text="AURORA / ENERGY LAB" fontSize="28" color="#f0f7ff"/>
+    <text id="subtitle" x="25" y="56" text="MICROGRID CONTROL   /   DECLARATIVE RENDERING DEMO" style="muted"/>
+    <text id="live" x="784" y="25" text="SIMULATION RUNNING" color="#67e8c2"><bind property="hidden" expression="!running"/></text>
+    <text id="paused" x="784" y="25" text="SIMULATION PAUSED" color="#ffbf78"><bind property="hidden" signal="running"/></text>
+    <text id="time" x="784" y="51" style="muted"><bind property="text" signal="plant.ms" format="T + %.0f ms"/></text>
+    <panel id="powerCard" x="24" y="94" width="260" height="310" style="card">
+      <text id="powerTitle" x="18" y="16" text="01 / POWER MIX" style="muted"/>
+      <sector id="gaugeTrack" x="30" y="48" width="200" height="200" bg="#284050" innerRadius="86" startAngle="135" endAngle="405"/>
+      <sector id="powerGauge" x="30" y="48" width="200" height="200" bg="#67e8c2" innerRadius="86" fade="true" tailOpacity="60" headOpacity="255" radialOpacity="220" startAngle="135" endAngle="405">
+        <bind property="endAngle" signal="gaugeEnd"/><bind property="bg" signal="stateColor"/>
+      </sector>
+      <text id="loadValue" x="40" y="111" width="180" textAlign="center" fontSize="48" color="#edf6ff"><bind property="text" signal="load" format="%.0f%%"/></text>
+      <text id="loadCaption" x="40" y="168" width="180" textAlign="center" text="BUS UTILIZATION" style="muted"/>
+      <text id="powerValue" x="22" y="253" fontSize="28" color="#f0f7ff"><bind property="text" signal="power" format="%.0f kW"/></text>
+      <text id="tempValue" x="165" y="262" color="#67e8c2"><bind property="text" signal="temperature" format="%.0f C"/><bind property="color" signal="stateColor"/></text>
+    </panel>
+    <panel id="turbineCard" x="300" y="94" width="384" height="310" style="card" clip="true">
+      <text id="rotorTitle" x="18" y="16" text="02 / TURBINE PHASE" style="muted"/>
+      <grid id="rotorGrid" x="60" y="53" width="264" height="220" color="#1a303d" gridX="22" gridY="22" lineWidth="1"/>
+      <sector id="rotorTrack" x="80" y="47" width="224" height="224" bg="#324553" innerRadius="98" startAngle="0" endAngle="360"/>
+      <panel id="preciseRotor" x="80" y="47" width="224" height="224" bgOpacity="0" clip="false">
+        <bind property="hidden" expression="economy"/>
+        <repeat id="preciseBlades" count="3">
+          <sector id="blade" width="224" height="224" bg="#ffb35c" startAngle="-8" endAngle="76" innerRadius="28" fade="true" fadePower="2" tailOpacity="0" headOpacity="250" radialOpacity="80" rasterSize="224" pivotX="112" pivotY="112">
+            <bind property="rotation" expression="spin+${index}*120"/>
+          </sector>
+        </repeat>
+      </panel>
+      <panel id="economyRotor" x="80" y="47" width="224" height="224" bgOpacity="0" clip="false">
+        <bind property="hidden" expression="!economy"/>
+        <repeat id="economyBlades" count="3">
+          <sector id="blade" width="224" height="224" bg="#ffb35c" startAngle="-8" endAngle="76" innerRadius="28" fade="true" fadePower="2" tailOpacity="0" headOpacity="250" radialOpacity="80" rasterSize="64" pivotX="112" pivotY="112">
+            <bind property="rotation" expression="spin+${index}*120"/>
+          </sector>
+        </repeat>
+      </panel>
+      <sector id="hubOutline" x="165" y="132" width="54" height="54" bg="#627687" innerRadius="88" startAngle="0" endAngle="360"/>
+      <polygon id="hub" x="179" y="145" width="26" height="28" points="13,0 25,8 25,21 13,28 1,21 1,8" bg="#edf6ff" color="#edf6ff" lineWidth="1" pivotX="13" pivotY="14"><bind property="rotation" expression="-spin"/></polygon>
+      <text id="rpm" x="18" y="276" color="#ffbf78"><bind property="text" signal="rpm" format="%.0f RPM"/></text>
+      <text id="direction" x="232" y="276" style="muted"><bind property="text" signal="direction" format="DIR %d"/></text>
+    </panel>
+    <panel id="distributionCard" x="700" y="94" width="300" height="310" style="card" clip="true">
+      <text id="distributionTitle" x="18" y="16" text="03 / DISTRIBUTION" style="muted"/>
+      <path id="flowBase" x="20" y="52" width="260" height="80" points="0,35 70,0 140,75 260,35" curve="catmull-rom" color="#284b5e" lineWidth="12"/>
+      <path id="flow" x="20" y="52" width="260" height="80" points="0,35 70,0 140,75 260,35" curve="catmull-rom" color="#64d9f3" lineWidth="3" dashLength="9" dashGap="5">
+        <bind property="p1y" expression="10+12*sin(plant.ms/1000)"/>
+        <bind property="p2y" expression="60+12*cos(plant.ms/1000)"/>
+        <bind property="opacity" expression="170+80*sin(plant.ms/1200)"/>
+      </path>
+      <polygon id="flowArrow" x="255" y="75" width="22" height="26" points="0,0 21,13 0,26 5,13" bg="#64d9f3" color="#64d9f3" lineWidth="1"/>
+      <repeat collection="channels">
+        <panel id="channel" x="18" width="264" height="31" bgOpacity="0">
+          <bind property="y" expression="153+${index}*35"/>
+          <text id="label" y="2" text="FEED ${index}" style="muted"/>
+          <bar id="bar" x="77" y="9" width="120" height="6" min="0" max="100" color="#64d9f3"><bind property="value" signal="${item.load}"/></bar>
+          <text id="reading" x="211" y="2" color="#e2f0fa"><bind property="text" signal="${item.load}" format="%.0f%%"/></text>
+        </panel>
+      </repeat>
+    </panel>
+    <panel id="waveCard" x="24" y="420" width="660" height="100" style="card" clip="true">
+      <text id="waveTitle" x="16" y="9" text="INVERTER OUTPUT / SYNTHETIC WAVEFORM" style="muted"/>
+      <grid id="waveGrid" x="16" y="36" width="628" height="62" color="#213746" gridX="52" gridY="20" lineWidth="1"/>
+      <path id="wave" x="16" y="36" width="628" height="62" points="0,28 57,28 114,28 171,28 228,28 285,28 342,28 399,28 456,28 513,28 570,28 627,28" curve="catmull-rom" color="#67e8c2" lineWidth="2">
+        <bind property="p0y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+0*0.9)"/>
+        <bind property="p1y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+1*0.9)"/>
+        <bind property="p2y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+2*0.9)"/>
+        <bind property="p3y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+3*0.9)"/>
+        <bind property="p4y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+4*0.9)"/>
+        <bind property="p5y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+5*0.9)"/>
+        <bind property="p6y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+6*0.9)"/>
+        <bind property="p7y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+7*0.9)"/>
+        <bind property="p8y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+8*0.9)"/>
+        <bind property="p9y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+9*0.9)"/>
+        <bind property="p10y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+10*0.9)"/>
+        <bind property="p11y" expression="28+(stress ? 44 : 20)*sin(plant.ms/500+11*0.9)"/>
+      </path>
+    </panel>
+    <panel id="statusCard" x="700" y="420" width="300" height="100" style="card">
+      <text id="statusTitle" x="18" y="10" text="RENDER PROFILE / SYSTEM" style="muted"/>
+      <text id="preciseLabel" x="18" y="35" text="224px / HIGH DETAIL" color="#64d9f3"><bind property="hidden" signal="economy"/></text>
+      <text id="economyLabel" x="18" y="35" text="64px / COARSE DETAIL" color="#ffbf78"><bind property="hidden" expression="!economy"/></text>
+      <text id="healthy" x="18" y="65" text="THERMAL MARGIN OK" color="#67e8c2"><bind property="hidden" signal="warning"/></text>
+      <text id="warning" x="18" y="65" text="THERMAL LIMIT / 86 C" color="#ff9f67"><bind property="hidden" expression="!warning"/></text>
+      <text id="rate" x="232" y="65" style="muted"><bind property="text" signal="rate" format="%.0fx"/></text>
+    </panel>
+    <button id="pauseButton" x="24" y="540" width="156" height="40" text="PAUSE / RUN" style="control"><on event="click" command="pause"/></button>
+    <button id="speedButton" x="188" y="540" width="156" height="40" text="SPEED 1x / 2x" style="control"><on event="click" command="speed"/></button>
+    <button id="reverseButton" x="352" y="540" width="156" height="40" text="REVERSE" style="control"><on event="click" command="reverse"/></button>
+    <button id="stressButton" x="516" y="540" width="156" height="40" text="LOAD STEP" style="control"><on event="click" command="stress"/></button>
+    <button id="qualityButton" x="680" y="540" width="156" height="40" text="DETAIL / DRAFT" style="control"><on event="click" command="quality"/></button>
+    <button id="resetButton" x="844" y="540" width="156" height="40" text="RESET" style="control"><on event="click" command="reset"/></button>
+  </page>
+</dashboard>
