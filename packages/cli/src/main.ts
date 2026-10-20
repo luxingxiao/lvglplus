@@ -19,6 +19,7 @@ import {
   doctor,
   run,
   generateDBC,
+  pythonPath,
 } from "./build.js";
 import { serve } from "./server.js";
 import {
@@ -177,7 +178,7 @@ try {
       emit({ output, formatVersion: project.ir.formatVersion });
     } else if (command === "build") {
       if (flags.wasm) {
-        await run("python3", [
+        await run(pythonPath(), [
           path.join(repositoryRoot, "scripts/build_preview.py"),
           ...(project.manifest.native?.sources.length ||
           project.manifest.fonts?.length

@@ -6,11 +6,11 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-#define LVP_FORMAT_VERSION 3
-#define LVP_SDK_ABI 2
+#define LVP_FORMAT_VERSION 4
+#define LVP_SDK_ABI 3
 #define LVP_STRING_MAX 255
-#define LVP_SIGNAL_MAX 256
-#define LVP_NODE_MAX 512
+#define LVP_SIGNAL_MAX 1024
+#define LVP_NODE_MAX 4096
 typedef enum {
     LVP_OK = 0,
     LVP_ERROR = -1,
@@ -104,7 +104,9 @@ typedef enum {
     LVP_BIND_END_ANGLE,
     LVP_BIND_LINE_WIDTH,
     /* Fixed-capacity geometry coordinates: x0,y0 through x63,y63. */
-    LVP_BIND_POINT_BASE
+    LVP_BIND_POINT_BASE,
+    LVP_BIND_SOURCE = LVP_BIND_POINT_BASE + 128,
+    LVP_BIND_PLAYING
 } lvp_binding_kind;
 typedef struct {
     uint32_t property, signal, two_way;

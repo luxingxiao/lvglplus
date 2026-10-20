@@ -83,12 +83,20 @@ export const properties = new Set([
   "fadePower",
   "innerRadius",
   "rasterSize",
+  "lazy",
+  "retain",
+  "pageSignal",
+  "textMode",
+  "modal",
+  "priority",
 ]);
 const types = new Set(["number", "integer", "boolean", "string", "enum"]);
 const identifier = /^[A-Za-z_][A-Za-z0-9_.]*$/;
 
 export function compile(input: CompileInput): CompileResult {
   const diagnostics: Diagnostic[] = [];
+  const nodeLimit = input.manifest.limits?.nodes ?? 512;
+  const signalLimit = input.manifest.limits?.signals ?? 256;
   const error = (node: XmlNode, code: string, message: string) => {
     if (diagnostics.length < 128)
       diagnostics.push({ ...node.loc, code, message, severity: "error" });
@@ -145,8 +153,8 @@ export function compile(input: CompileInput): CompileResult {
     error(ui, "TARGET", "Target names must be unique");
   if (input.manifest.fonts !== undefined) {
     const fonts = input.manifest.fonts;
-    if (!Array.isArray(fonts) || fonts.length > 16)
-      error(ui, "FONT", "At most 16 declared fonts");
+    if (!Array.isArray(fonts) || fonts.length > 64)
+      error(ui, "FONT", "At most 64 declared fonts");
     else {
       const names = new Set<string>();
       for (const f of fonts) {
@@ -167,6 +175,37 @@ export function compile(input: CompileInput): CompileResult {
       }
     }
   }
+  if (
+    !Number.isInteger(nodeLimit) ||
+    nodeLimit < 1 ||
+    nodeLimit > 4096 ||
+    !Number.isInteger(signalLimit) ||
+    signalLimit < 1 ||
+    signalLimit > 1024
+  )
+    error(
+      ui,
+      "LIMITS",
+      "limits.nodes must be 1..4096 and limits.signals 1..1024",
+    );
+  for (const [key, cap] of [
+    ["resourceBytes", 128 * 1024 * 1024],
+    ["decodedBytes", 512 * 1024 * 1024],
+  ] as const) {
+    const value = input.manifest.limits?.[key];
+    if (
+      value !== undefined &&
+      (!Number.isInteger(value) || value < 1 || value > cap)
+    )
+      error(ui, "LIMITS", `${key} exceeds its supported resource ceiling`);
+  }
+  if (
+    input.manifest.limits !== undefined &&
+    (!input.manifest.limits ||
+      typeof input.manifest.limits !== "object" ||
+      Array.isArray(input.manifest.limits))
+  )
+    error(ui, "LIMITS", "limits must be an object");
   const declaration = lowerDeclarative(model, ui, error);
   const signals: Signal[] = [],
     signalNodes: XmlNode[] = [],
@@ -246,8 +285,12 @@ export function compile(input: CompileInput): CompileResult {
     });
     signalNodes.push(node);
   }
-  if (signals.length > 256)
-    error(model, "SIGNAL_LIMIT", "At most 256 signals are supported");
+  if (signals.length > signalLimit)
+    error(
+      model,
+      "SIGNAL_LIMIT",
+      `At most ${signalLimit} signals are supported`,
+    );
   signals.forEach((signal, i) => {
     const node = signalNodes[i];
     if (node.tag === "computed") {
@@ -368,8 +411,12 @@ export function compile(input: CompileInput): CompileResult {
     chain: string[] = [],
     fills = new Map<string, XmlNode[]>(),
   ): UINode[] {
-    if (count >= 512) {
-      error(node, "NODE_LIMIT", "At most 512 expanded nodes are supported");
+    if (count >= nodeLimit) {
+      error(
+        node,
+        "NODE_LIMIT",
+        `At most ${nodeLimit} expanded nodes are supported`,
+      );
       return [];
     }
     if (node.tag === "slot")
@@ -641,10 +688,167 @@ export function compile(input: CompileInput): CompileResult {
         error(node, "TRANSLATION", "textKey requires translations");
       props.locale = defaultLocale;
     }
+    if (
+      props.modal !== undefined &&
+      (node.tag !== "panel" || !["true", "false"].includes(props.modal))
+    )
+      error(node, "MODAL", "modal is a panel boolean");
+    if (
+      props.priority !== undefined &&
+      (!/^\d+$/.test(props.priority) || Number(props.priority) > 255)
+    )
+      error(node, "MODAL", "priority must be 0..255");
+    for (const key of ["lazy", "retain"])
+      if (
+        props[key] !== undefined &&
+        (node.tag !== "page" || !["true", "false"].includes(props[key]))
+      )
+        error(node, "PAGE", `${key} is a page boolean`);
+    if (props.pageSignal) {
+      const index = signals.findIndex(
+        (s) => s.name === props.pageSignal && s.type !== "string",
+      );
+      if (node.tag !== "page" || index < 0)
+        error(node, "PAGE", "pageSignal requires a numeric page selector");
+      else props.pageSignal = String(index);
+    }
+    if (
+      props.textMode &&
+      !["wrap", "clip", "ellipsis", "scroll", "scroll-circular"].includes(
+        props.textMode,
+      )
+    )
+      error(node, "TEXT_MODE", "Invalid textMode");
     const bindings: Binding[] = [];
     let command: string | undefined;
     for (const child of node.children) {
-      if (child.tag === "animate") {
+      if (child.tag === "input") {
+        attributes(child, ["action", "command"]);
+        if (
+          !/^[A-Za-z_][A-Za-z0-9_]{0,23}$/.test(child.attrs.action ?? "") ||
+          child.children.length ||
+          !commands.some((c) => c.name === child.attrs.command) ||
+          props["input." + child.attrs.action]
+        )
+          error(
+            child,
+            "INPUT",
+            "input requires unique semantic action and existing command",
+          );
+        props["input." + child.attrs.action] = child.attrs.command;
+      } else if (child.tag === "source") {
+        attributes(child, ["src"]);
+        const value = child.attrs.src ?? "";
+        if (
+          node.tag !== "image" ||
+          !/^A:[A-Za-z0-9_./-]+\.png$/.test(value) ||
+          value.slice(2).split("/").includes("..") ||
+          child.children.length
+        )
+          error(
+            child,
+            "RESOURCE",
+            "source requires an image and a project PNG path",
+          );
+        const index = Object.keys(props).filter((k) =>
+          /^source\.\d+$/.test(k),
+        ).length;
+        if (index >= 512) error(child, "RESOURCE", "At most 512 image sources");
+        props["source." + index] = value;
+        if (!props.src) props.src = value;
+      } else if (child.tag === "sequence") {
+        attributes(child, ["frameMs", "repeat"]);
+        const ms = Number(child.attrs.frameMs ?? 50),
+          repeat = Number(child.attrs.repeat ?? 0);
+        if (
+          node.tag !== "image" ||
+          props.sequence ||
+          !Number.isInteger(ms) ||
+          ms < 1 ||
+          ms > 3600000 ||
+          !Number.isInteger(repeat) ||
+          repeat < -1 ||
+          repeat > 1000000 ||
+          child.children.length
+        )
+          error(
+            child,
+            "SEQUENCE",
+            "sequence requires image, frameMs 1..3600000, repeat -1..1000000",
+          );
+        props.sequence = `${ms},${repeat}`;
+      } else if (child.tag === "keyframes") {
+        attributes(child, ["property", "repeat"]);
+        const property = child.attrs.property,
+          repeat = Number(child.attrs.repeat ?? 0);
+        if (
+          ![
+            "x",
+            "y",
+            "opacity",
+            "value",
+            "rotation",
+            "scaleX",
+            "scaleY",
+          ].includes(property) ||
+          !Number.isInteger(repeat) ||
+          repeat < -1 ||
+          repeat > 1000000 ||
+          child.children.length < 2 ||
+          child.children.length > 32 ||
+          props["timeline." + property]
+        )
+          error(
+            child,
+            "KEYFRAMES",
+            "Expected 2..32 keys, a supported property and bounded repeat",
+          );
+        let previous = -1;
+        const keys = child.children.map((key, index) => {
+          attributes(key, ["atMs", "value", "easing", "control"]);
+          const at = Number(key.attrs.atMs),
+            value = Number(key.attrs.value);
+          const easings = [
+            "linear",
+            "ease-in-out",
+            "step",
+            "ease-in",
+            "ease-out",
+            "cubic-bezier",
+          ];
+          const easing = easings.indexOf(key.attrs.easing ?? "linear");
+          const control = (key.attrs.control ?? "0.25,0.1,0.25,1")
+            .split(",")
+            .map(Number);
+          if (
+            key.tag !== "key" ||
+            key.children.length ||
+            !Number.isInteger(at) ||
+            at <= previous ||
+            at > 3600000 ||
+            (index === 0 && at !== 0) ||
+            !Number.isFinite(value) ||
+            Math.abs(value) > 32767 ||
+            easing < 0 ||
+            control.length !== 4 ||
+            control.some((x) => !Number.isFinite(x) || Math.abs(x) > 8) ||
+            control[0] < 0 ||
+            control[0] > 1 ||
+            control[2] < 0 ||
+            control[2] > 1 ||
+            (property === "opacity" && (value < 0 || value > 255)) ||
+            (property.startsWith("scale") && value < 0)
+          )
+            error(
+              key,
+              "KEYFRAMES",
+              "Invalid key position, value or easing curve",
+            );
+          previous = at;
+          return `${at},${value},${easing},${control.join(",")}`;
+        });
+        props["timeline." + property] = [repeat, ...keys].join(";");
+      } else if (child.tag === "animate") {
         attributes(child, [
           "property",
           "from",
@@ -707,6 +911,8 @@ export function compile(input: CompileInput): CompileResult {
           property = child.attrs.property as Binding["property"];
         if (signal < 0)
           error(child, "BIND_SIGNAL", `Unknown signal ${child.attrs.signal}`);
+        if (["source", "playing"].includes(property) && node.tag !== "image")
+          error(child, "BIND_TYPE", "source/playing bindings require image");
         if (!bindingKinds.includes(property))
           error(child, "BIND_PROPERTY", `Unknown binding property ${property}`);
         if (/^p\d+[xy]$/.test(property)) {
@@ -827,8 +1033,15 @@ export function compile(input: CompileInput): CompileResult {
         attributes(child, ["event", "command", "argument", "argumentSignal"]);
         if (child.children.length)
           error(child, "EVENT", "on cannot contain children");
-        if (child.attrs.event !== "click" || node.tag !== "button")
-          error(child, "EVENT", "Current events support button click");
+        if (
+          child.attrs.event !== "click" ||
+          !["button", "image", "panel", "custom"].includes(node.tag)
+        )
+          error(
+            child,
+            "EVENT",
+            "click requires button, image, panel or custom",
+          );
         command = child.attrs.command;
         if (
           child.attrs.argument !== undefined ||
@@ -863,6 +1076,23 @@ export function compile(input: CompileInput): CompileResult {
           error(child, "COMMAND_REF", `Unknown command ${command}`);
       }
     }
+    for (const key of Object.keys(props))
+      if (key.startsWith("timeline.") && props["anim." + key.slice(9)])
+        error(node, "KEYFRAMES", "Timeline conflicts with animate");
+    const sourceCount = Object.keys(props).filter((k) =>
+      /^source\.\d+$/.test(k),
+    ).length;
+    if (
+      props.sequence &&
+      (!sourceCount || bindings.some((b) => b.property === "source"))
+    )
+      error(
+        node,
+        "SEQUENCE",
+        "sequence needs sources and cannot also bind source",
+      );
+    if (bindings.some((b) => b.property === "source") && !sourceCount)
+      error(node, "RESOURCE", "source binding requires declared sources");
     return [
       {
         id,
@@ -871,7 +1101,18 @@ export function compile(input: CompileInput): CompileResult {
         bindings,
         command,
         children: node.children
-          .filter((n) => !["bind", "on", "animate"].includes(n.tag))
+          .filter(
+            (n) =>
+              ![
+                "bind",
+                "on",
+                "animate",
+                "source",
+                "sequence",
+                "input",
+                "keyframes",
+              ].includes(n.tag),
+          )
           .flatMap((n, i) => build(n, id, i, chain, fills)),
         loc: node.loc,
       },
@@ -913,7 +1154,8 @@ export function compile(input: CompileInput): CompileResult {
   }
   if (!pages.length)
     error(ui, "PAGE_REQUIRED", "At least one page is required");
-  if (count > 512) error(ui, "NODE_LIMIT", "At most 512 nodes are supported");
+  if (count > nodeLimit)
+    error(ui, "NODE_LIMIT", `At most ${nodeLimit} nodes are supported`);
   const initialPage = ui.attrs.start ?? pages[0]?.id;
   if (!pages.some((p) => p.id === initialPage))
     error(ui, "PAGE_REF", `Unknown start page ${initialPage}`);
@@ -928,14 +1170,17 @@ export function compile(input: CompileInput): CompileResult {
   }
   pages.forEach(checkNavigation);
   function checkProps(node: UINode) {
-    if (Object.keys(node.props).length > 64)
+    if (Object.keys(node.props).length > 640)
       error(
         { loc: node.loc } as XmlNode,
         "PROPERTY_LIMIT",
-        "At most 64 lowered properties per node",
+        "At most 640 lowered properties per node",
       );
     for (const binding of node.bindings)
-      if (node.props["anim." + binding.property])
+      if (
+        node.props["anim." + binding.property] ||
+        node.props["timeline." + binding.property]
+      )
         error(
           { loc: node.loc } as XmlNode,
           "ANIMATION",

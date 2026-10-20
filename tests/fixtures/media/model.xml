@@ -1,0 +1,12 @@
+<model version="1">
+<signal name="selection" type="integer"/>
+<signal name="playing" type="boolean" initial="true"/>
+<signal name="page" type="integer"/>
+<signal name="blocked" type="boolean" initial="false"/>
+<command name="green" target="selection" value="1"/>
+<command name="bad" target="selection" value="99"/>
+<command name="pause" target="playing" value="0"/>
+<command name="resume" target="playing" value="1"/>
+<command name="next" target="page" value="1"/>
+<command name="back" target="page" value="0"/>
+</model>

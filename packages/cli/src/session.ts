@@ -43,6 +43,8 @@ export class ModelSession {
       command_state: ["number", ["number"]],
       pointer: [null, ["number", "number", "number"]],
       close: [null, []],
+      action: ["number", ["string"]],
+      resident_nodes: ["number", []],
     };
     for (const [name, [ret, args]] of Object.entries(types))
       this.api[name] = this.m.cwrap("lvp_preview_" + name, ret, args);
@@ -126,6 +128,17 @@ export class ModelSession {
       id,
       state: ["pending", "succeeded", "failed"][this.api.command_state(id)],
     };
+  }
+  input(action: string) {
+    const id = this.api.action(action);
+    if (id < 0) throw Error("Input not handled");
+    return {
+      id,
+      state: ["pending", "succeeded", "failed"][this.api.command_state(id)],
+    };
+  }
+  residentNodes(): number {
+    return this.api.resident_nodes();
   }
   pointer(x: number, y: number, pressed: boolean) {
     if (!Number.isFinite(x) || !Number.isFinite(y))

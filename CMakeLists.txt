@@ -64,7 +64,7 @@ if(LVP_WITH_LVGL)
     target_link_options(lvp_preview PRIVATE --no-entry
       "-sMODULARIZE=1" "-sEXPORT_ES6=1" "-sENVIRONMENT=web,node" "-sALLOW_MEMORY_GROWTH=1"
       "-sEXPORTED_RUNTIME_METHODS=['cwrap','UTF8ToString','FS','HEAPU8','HEAP32']"
-      "-sEXPORTED_FUNCTIONS=['_malloc','_free','_lvp_preview_load','_lvp_preview_tick','_lvp_preview_pixels','_lvp_preview_width','_lvp_preview_height','_lvp_preview_error','_lvp_preview_signal_count','_lvp_preview_signal_name','_lvp_preview_signal_type','_lvp_preview_number','_lvp_preview_text','_lvp_preview_quality','_lvp_preview_set','_lvp_preview_set_text','_lvp_preview_begin','_lvp_preview_end','_lvp_preview_disconnect','_lvp_preview_pointer','_lvp_preview_command_number','_lvp_preview_action','_lvp_preview_command','_lvp_preview_command_state','_lvp_preview_bounds','_lvp_preview_close','_lvp_preview_hit_test','_lvp_preview_locale','_lvp_preview_restart_animations']")
+      "-sEXPORTED_FUNCTIONS=['_malloc','_free','_lvp_preview_navigate','_lvp_preview_push','_lvp_preview_back','_lvp_preview_resident_nodes','_lvp_preview_frame','_lvp_preview_load','_lvp_preview_tick','_lvp_preview_pixels','_lvp_preview_width','_lvp_preview_height','_lvp_preview_error','_lvp_preview_signal_count','_lvp_preview_signal_name','_lvp_preview_signal_type','_lvp_preview_number','_lvp_preview_text','_lvp_preview_quality','_lvp_preview_set','_lvp_preview_set_text','_lvp_preview_begin','_lvp_preview_end','_lvp_preview_disconnect','_lvp_preview_pointer','_lvp_preview_command_number','_lvp_preview_action','_lvp_preview_command','_lvp_preview_command_state','_lvp_preview_bounds','_lvp_preview_close','_lvp_preview_hit_test','_lvp_preview_locale','_lvp_preview_restart_animations']")
   endif()
   if(LVP_FONT_SOURCES)
     target_sources(lvglplus_renderer PRIVATE ${LVP_FONT_SOURCES})
@@ -118,6 +118,9 @@ endif()
 include(CTest)
 if(BUILD_TESTING)
   if(LVP_WITH_LVGL AND NOT EMSCRIPTEN)
+    add_executable(lvp_ui_media tests/c/ui_media.c)
+    target_link_libraries(lvp_ui_media PRIVATE lvglplus_renderer)
+    add_test(NAME ui-media COMMAND lvp_ui_media)
     add_executable(lvp_ui_extensions tests/c/ui_extensions.c)
     target_link_libraries(lvp_ui_extensions PRIVATE lvglplus_live)
     add_test(NAME ui-extensions COMMAND lvp_ui_extensions)

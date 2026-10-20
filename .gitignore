@@ -20,3 +20,6 @@ __pycache__/
 
 # Private application validation; never publish application sources or assets.
 .local-validation/
+
+# Source PNGs for the public media contract fixture.
+!tests/fixtures/media/assets/*.png

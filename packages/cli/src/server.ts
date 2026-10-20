@@ -15,7 +15,12 @@ import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 import { WebSocketServer, WebSocket } from "ws";
-import { encodePackage, flatten, type DataEvent } from "@lvglplus/compiler";
+import {
+  encodePackage,
+  flatten,
+  imageSources,
+  type DataEvent,
+} from "@lvglplus/compiler";
 import {
   loadProject,
   inside,
@@ -406,8 +411,8 @@ export async function serve(folder: string, port = 5178) {
       });
       return;
     }
-    const resource = flatten(project.ir).some(
-      (n) => n.props.src?.slice(2) === changed,
+    const resource = flatten(project.ir).some((n) =>
+      imageSources(n).some((s) => s.slice(2) === changed),
     );
     if (!files.has(changed) && !resource) return;
     if (reloadTimer) clearTimeout(reloadTimer);
@@ -539,7 +544,11 @@ export async function serve(folder: string, port = 5178) {
         await mkdir(path.join(project.root, "assets"), { recursive: true });
         const file = await inside(project.root, name, false);
         if (request.operation === "delete") {
-          if (flatten(project.ir).some((n) => n.props.src === "A:" + name))
+          if (
+            flatten(project.ir).some((n) =>
+              imageSources(n).includes("A:" + name),
+            )
+          )
             throw new Error("Resource is referenced by the active UI");
           await rm(await inside(project.root, name));
         } else {
@@ -581,9 +590,9 @@ export async function serve(folder: string, port = 5178) {
       if (url.pathname === "/api/assets" && req.method === "GET") {
         const names = [
           ...new Set(
-            flatten(project.ir)
-              .filter((n) => n.kind === "image" && n.props.src)
-              .map((n) => n.props.src.slice(2)),
+            flatten(project.ir).flatMap((n) =>
+              imageSources(n).map((s) => s.slice(2)),
+            ),
           ),
         ];
         const assets = [];
@@ -593,7 +602,8 @@ export async function serve(folder: string, port = 5178) {
           const info = await stat(file);
           if (
             info.size > 2 * 1024 * 1024 ||
-            (total += info.size) > 8 * 1024 * 1024
+            (total += info.size) >
+              (project.manifest.limits?.resourceBytes ?? 8 * 1024 * 1024)
           )
             throw new Error("Preview assets exceed size limit");
           assets.push({

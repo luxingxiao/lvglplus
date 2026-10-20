@@ -13,7 +13,7 @@ const repository = path.resolve(
 const { fonts = [] } = JSON.parse(
   await readFile(path.join(root, "plus.project.json"), "utf8"),
 );
-if (!Array.isArray(fonts) || fonts.length > 16) throw Error("At most 16 fonts");
+if (!Array.isArray(fonts) || fonts.length > 64) throw Error("At most 64 fonts");
 if (!fonts.length) {
   console.log("[]");
   process.exit(0);

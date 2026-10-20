@@ -12,7 +12,12 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { encodePackage, flatten, FORMAT_VERSION } from "@lvglplus/compiler";
+import {
+  encodePackage,
+  flatten,
+  imageSources,
+  FORMAT_VERSION,
+} from "@lvglplus/compiler";
 import { repositoryRoot, inside, type LoadedProject } from "./project.js";
 
 export async function ownedOutput(
@@ -63,9 +68,9 @@ export async function ownedOutput(
 export async function projectAssets(project: LoadedProject) {
   const names = [
     ...new Set(
-      flatten(project.ir)
-        .filter((n) => n.kind === "image" && n.props.src)
-        .map((n) => n.props.src.slice(2)),
+      flatten(project.ir).flatMap((n) =>
+        imageSources(n).map((s) => s.slice(2)),
+      ),
     ),
   ];
   return Promise.all(
@@ -174,7 +179,7 @@ export async function createBundle(
     header = Buffer.alloc(32);
   header.write("LVPB");
   header.writeUInt32LE(1, 4);
-  header.writeUInt32LE(2, 8);
+  header.writeUInt32LE(3, 8);
   header.writeUInt32LE(0x090500, 12);
   header.writeUInt32LE(ui.length, 16);
   header.writeUInt32LE(crc32(ui), 20);
@@ -206,7 +211,7 @@ export async function createBundle(
           bundleVersion: 1,
           xmlVersion: 1,
           irVersion: FORMAT_VERSION,
-          sdkAbi: 2,
+          sdkAbi: 3,
           lvglVersion: "9.5.0",
           project: project.ir.name,
           target: selected,
@@ -225,12 +230,13 @@ export async function verifyBundle(root: string) {
   );
   if (
     manifest.bundleVersion !== 1 ||
-    ![1, 2].includes(manifest.sdkAbi) ||
-    ![1, 2, 3].includes(manifest.irVersion) ||
+    ![1, 2, 3].includes(manifest.sdkAbi) ||
+    ![1, 2, 3, 4].includes(manifest.irVersion) ||
     (manifest.irVersion === 3 && manifest.sdkAbi !== 2) ||
+    (manifest.irVersion === 4 && manifest.sdkAbi !== 3) ||
     manifest.lvglVersion !== "9.5.0" ||
     !Array.isArray(manifest.files) ||
-    manifest.files.length > 512
+    manifest.files.length > 4096
   )
     throw new Error("Incompatible bundle");
   const names = new Set<string>();

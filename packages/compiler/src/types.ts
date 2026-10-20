@@ -1,4 +1,4 @@
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 export const PROJECT_VERSION = 1;
 export type ValueType = "number" | "integer" | "boolean" | "string" | "enum";
 export type Quality = "valid" | "stale" | "invalid" | "disconnected";
@@ -116,6 +116,12 @@ export interface ProjectManifest {
   ui: string;
   model: string;
   sources?: string;
+  limits?: {
+    nodes?: number;
+    signals?: number;
+    resourceBytes?: number;
+    decodedBytes?: number;
+  };
   native?: { sources: string[] };
   fonts?: { name: string; file: string; size: number; characters: string }[];
   lvglVersion: string;

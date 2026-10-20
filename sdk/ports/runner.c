@@ -125,6 +125,7 @@ int main(int argc, char **argv) {
     }
     ui = lvp_ui_create(context);
     if (!ui) {
+        fprintf(stderr, "Cannot create UI: %s\n", lvp_ui_error());
         lvp_destroy(context);
         lvp_package_free(package);
         return 1;
@@ -210,7 +211,7 @@ int main(int argc, char **argv) {
         if (!f)
             return 1;
         for (i = 0; i < schema->node_count; i++) {
-            int32_t x, y, w, h;
+            int32_t x = 0, y = 0, w = 0, h = 0;
             lvp_ui_bounds(ui, i, &x, &y, &w, &h);
             fprintf(f, "%s\t%u\t%d\t%d\t%d\t%d\n", schema->nodes[i].id, schema->nodes[i].kind, x, y, w, h);
         }
